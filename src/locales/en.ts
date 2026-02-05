@@ -298,7 +298,7 @@ export default {
             label: "Usage",
             title: "Subscription URL(s)",
             content:
-              "Supports mixing three types of formats with line breaks:\n1. Full remote URL\n2. Internal file reference like /api/file/name 3.\nAbsolute path for local file\n\nSupported parameters:\n\ninsecure: https requests will not verify the server certificate\ncacheKey: Setting the name of the optimistic cache. Its value can be managed in the persistent store(suitable for subscriptions that often fail to fetch).\n\nvalidCheck: error will be reported when expired or there is no remaining traffic\n\nflowUserAgent: the User-Agent for fetching subscription usage info\n\nflowUrl: the URL for fetching subscription usage info(using the content of the response body)\n\nshowRemaining: show remaining traffic instead of usage\n\nnoFlow: do not query for flow\n\nhideExpire: hide expiration time\n\nnoCache: do not use cache\n\nresetDay: the day when monthly data usage resets\n\nstartDate: subscription start date\n\ncycleDays: reset cycle (in days).\n\nFor example: http://a.com?token=1#cycleDays=31&startDate=2024-06-04 \nor http://a.com?token=1#resetDay=15",
+              "Supports mixing three types of formats with line breaks:\n1. Full remote URL\n2. Internal file reference like /api/file/name 3.\nAbsolute path for local file\n\nSupported parameters:\n\ninsecure: https requests will not verify the server certificate\ncacheKey: Setting the name of the optimistic cache. Its value can be managed in the persistent store(suitable for subscriptions that often fail to fetch).\n\nvalidCheck: error will be reported when expired or there is no remaining traffic\n\nflowUserAgent: the User-Agent for fetching subscription usage info\n\nflowUrl: the URL for fetching subscription usage info(using the content of the response body or response headers)\n\nshowRemaining: show remaining traffic instead of usage\n\nnoFlow: do not query for flow\n\nhideExpire: hide expiration time\n\nnoCache: do not use cache\n\nresetDay: the day when monthly data usage resets\n\nstartDate: subscription start date\n\ncycleDays: reset cycle (in days).\n\nFor example: http://a.com?token=1#cycleDays=31&startDate=2024-06-04 \nor http://a.com?token=1#resetDay=15",
           },
           isEmpty: "URL cannot be empty",
           isIllegal: "Invalid URL",
@@ -337,7 +337,7 @@ export default {
         },
         subUserinfo: {
           label: "Subscription-Userinfo",
-          placeholder: "Value or URL(use response content)",
+          placeholder: "Value or URL(supports noCache etc.)",
         },
         passThroughUA: {
           label: 'Pass Through Request User-Agent',
@@ -478,7 +478,9 @@ export default {
             "Hysteria 2",
             "Juicity",
             "mieru",
+            "sudoku",
             "AnyTLS",
+            'TrustTunnel',
             "WireGuard",
             "SSH",
             "External Proxy Program",
@@ -530,12 +532,16 @@ export default {
             placeholder:
               "The connector between the node name and the sequence number",
           },
+          field: {
+            des: 'Deduplication Field(supports multi-field concatenation and lodash get syntax)',
+            placeholder: 'Field for deduplication, e.g. node name, please enter name',
+          },
           tipsTitle: "Handle Duplicate Tips",
           tipsDes: "Node deduplication operation instructions",
         },
         "Script Filter": {
           label: "Script Filter",
-          options: ["Link", "Script"],
+          options: ["Remote Link", "Local Content"],
           des: ["Type", "Content"],
           placeholder:
             "Input Script Link or Internal File like /api/file/name. In addition to the parameters of the script itself, there is support for additional parameters: noCache - do not use cache, insecure - do not verify the server certificate. For example: http://a.com#a=1&b=2#noCache&insecure",
@@ -556,7 +562,7 @@ export default {
         },
         "Script Operator": {
           label: "Script Operator",
-          options: ["Link", "Script"],
+          options: ["Remote Link", "Local Content"],
           des: ["Type", "Content"],
           placeholder:
             "Input Script Link or Internal File like /api/file/name. In addition to the parameters of the script itself, there is support for additional parameters: noCache - do not use cache, insecure - do not verify the server certificate. For example: http://a.com#a=1&b=2#noCache&insecure",
@@ -596,8 +602,13 @@ export default {
       githubProxy: "Please input GitHub Proxy",
       defaultUserAgent: "Please input Default User-Agent",
       defaultProxy: "Please input Default Proxy/Policy",
-      defaultTimeout: "Default Timeout (in milliseconds, default: 8000)",
+      defaultTimeout: "Default Timeout (in ms, default: 8000)",
       cacheThreshold: "Cache Threshold (in KB, default: 1024)",
+      resourceCacheTtl: 'Resource Cache TTL, default: 3600(s)',
+      headersCacheTtl: 'Headers Cache TTL, default: 60(s)',
+      scriptCacheTtl: 'Script Cache TTL, default: 172800(s)',
+      concurrency: 'Concurrency Limit(default: 3)',
+      apiCheckTimeout: 'API Check Timeout, default: 3000(ms)',
       noGithubUser: "Not set GitHub username",
       noGistToken: "Not set Gist Token",
       noGithubProxy: "Not set GitHub Proxy",
@@ -635,7 +646,10 @@ export default {
         failed: "Sort failed",
       },
     },
-    config: "Configuration",
+    requestConfig: "Request Configuration",
+    cacheConfig: "Cache Configuration",
+    frontEndConfig: "Front-End Configuration",
+    githubConfig: 'GitHub Configuration',
     storage: {
       gist: {
         label: "Gist",
@@ -954,6 +968,7 @@ export default {
     showFloatingRefreshButton: "Show floating refresh button",
     showFloatingAddButton: "Show floating add button",
     displayPreviewInWebPage: 'Display preview in web page',
+    invalidShareFakeNode: "Invalid share returns fake info(to prevent caching)",
     tabBar: 'Hide "Sync" Page',
     tabBar2: 'Hide "File" Page',
     auto2: "MoreSetting Key",
@@ -975,7 +990,8 @@ export default {
       be: "Back-End",
       module: "Module",
       team: "Project Team",
-      link: "View on Github",
+      scriptTutorial: 'Scripts & Tutorials',
+      link: "GitHub",
     },
     changelogs: {
       title: "Changelogs",

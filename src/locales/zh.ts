@@ -225,7 +225,7 @@ export default {
         cancel: '取消',
         desc: '部分功能需使用参数 请查看文档',
         title: '订阅链接参数',
-        content: '"target=SurgeMac"\n+ ShadowsocksR/External Proxy Program\n\n"includeUnsupportedProxy=true" 包含官方/商店版不支持的协议',
+        content: '"target=SurgeMac"\n+ ShadowsocksR/External Proxy Program\n\n"includeUnsupportedProxy=true" 包含官方/商店版/未续费订阅不支持的协议',
       }
     },
   },
@@ -318,7 +318,7 @@ export default {
             fullScreenEditCancel: '取消全屏',
             label: '使用说明',
             title: '订阅链接',
-            content: '支持使用换行混写三种格式:\n1. 完整远程链接\n2. 类似 /api/file/name 的内部文件调用路径\n3. 本地文件的绝对路径\n\n支持以下参数\n\ninsecure: 不验证服务器证书\ncacheKey: 设置乐观缓存的名称 开启后也可自行在持久化缓存中管理(适合经常拉取失败的订阅)\nvalidCheck: 过期或无剩余流量时报错\nflowUserAgent: 查询流量时使用的 User-Agent\nflowUrl: 自定义查询流量的 URL(将使用响应体的内容)\nnoFlow: 不查询流量\nhideExpire: 隐藏到期\nshowRemaining: 显示剩余流量而不是已用流量\nnoCache: 不使用缓存\nresetDay: 每月流量重置日\nstartDate: 订阅开始日期\ncycleDays: 订阅重置周期(单位: 天)\n\n例: http://a.com?token=1#cycleDays=31&startDate=2024-06-04\n或 http://a.com?token=1#resetDay=15',
+            content: '支持使用换行混写三种格式:\n1. 完整远程链接\n2. 类似 /api/file/name 的内部文件调用路径\n3. 本地文件的绝对路径\n\n支持以下参数\n\ninsecure: 不验证服务器证书\ncacheKey: 设置乐观缓存的名称 开启后也可自行在持久化缓存中管理(适合经常拉取失败的订阅)\nvalidCheck: 过期或无剩余流量时报错\nflowUserAgent: 查询流量时使用的 User-Agent\nflowUrl: 自定义查询流量的 URL(优先响应体, 也支持响应头)\nnoFlow: 不查询流量\nhideExpire: 隐藏到期\nshowRemaining: 显示剩余流量而不是已用流量\nnoCache: 不使用缓存\nresetDay: 每月流量重置日\nstartDate: 订阅开始日期\ncycleDays: 订阅重置周期(单位: 天)\n\n例: http://a.com?token=1#cycleDays=31&startDate=2024-06-04\n或 http://a.com?token=1#resetDay=15',
           },
           isEmpty: '订阅链接不能为空',
           isIllegal: '订阅链接格式非法',
@@ -355,7 +355,7 @@ export default {
         },
         subUserinfo: {
           label: '订阅流量信息',
-          placeholder: '填写值或链接(使用响应内容)',
+          placeholder: '填写值或链接(支持 noCache 等参数)',
         },
         passThroughUA: {
           label: '透传请求的 User-Agent',
@@ -424,7 +424,7 @@ export default {
       nodeActions: {
         'Script Operator': {
           label: '脚本操作',
-          options: ['链接', '脚本'],
+          options: ['远程链接', '本地内容'],
           des: ['类型', '内容'],
           placeholder: '1. 完整远程脚本链接 2. 类似 /api/file/name 的内部文件调用路径 3. 本地文件的绝对路径. 除了脚本本身的参数外, 支持叠加参数: noCache 不使用缓存, insecure 不验证服务器证书. 例: http://a.com#a=1&b=2#noCache&insecure',
           openEditorBtn: '打开脚本编辑器',
@@ -494,7 +494,9 @@ export default {
             'Hysteria 2',
             'Juicity',
             'mieru',
+            'sudoku',
             'AnyTLS',
+            'TrustTunnel',
             'WireGuard',
             'SSH',
             'External Proxy Program',
@@ -547,13 +549,17 @@ export default {
             des: '连接符',
             placeholder: '节点名和序号之间的连接符，如：- ',
           },
+          field: {
+            des: '去重字段(多字段连接 支持 lodash get 语法)',
+            placeholder: '例如节点名, 请输入 name',
+          },
           tipsTitle: '节点去重操作提示',
           tipsDes:
             '对名字重复的节点进行操作（移除/重命名）。重命名模式下，会自动为重名节点添加序号，序号样式和位置可以自定义。同时序号和名字之间的连接符也可以自定义',
         },
         'Script Filter': {
           label: '脚本过滤',
-          options: ['链接', '脚本'],
+          options: ['远程链接', '本地内容'],
           des: ['类型', '内容'],
           placeholder: '1. 完整远程脚本链接 2. 类似 /api/file/name 的内部文件调用路径 3. 本地文件的绝对路径. 除了脚本本身的参数外, 支持叠加参数: noCache 不使用缓存, insecure 不验证服务器证书. 例: http://a.com#a=1&b=2#noCache&insecure',
           openEditorBtn: '打开脚本编辑器',
@@ -593,6 +599,11 @@ export default {
       defaultProxy: '请输入默认代理/策略',
       defaultTimeout: '默认超时(单位: 毫秒, 默认: 8000)',
       cacheThreshold: '缓存阈值(单位: KB, 默认: 1024)',
+      resourceCacheTtl: '资源缓存(单位: 秒, 默认: 3600)',
+      headersCacheTtl: '响应头缓存(单位: 秒, 默认: 60)',
+      scriptCacheTtl: '脚本缓存(单位: 秒, 默认: 172800)',
+      concurrency: '并发数(默认: 3)',
+      apiCheckTimeout: 'API 检测超时(单位: 毫秒, 默认: 3000)',
       noGithubUser: '未配置 GitHub 用户名',
       noGistToken: '未配置 GitHub 令牌',
       noGithubProxy: '未配置 GitHub 加速代理',
@@ -630,7 +641,10 @@ export default {
       save: '保存',
       clear: '清空',
     },
-    config: '配置',
+    requestConfig: "请求配置",
+    cacheConfig: "缓存配置",
+    frontEndConfig: "前端配置",
+    githubConfig: 'GitHub 配置',
     storage: {
       gist: {
         label: 'Gist 同步',
@@ -943,6 +957,7 @@ export default {
     showFloatingRefreshButton: '显示悬浮刷新按钮',
     showFloatingAddButton: '显示悬浮添加按钮',
     displayPreviewInWebPage: '在网页中预览',
+    invalidShareFakeNode: '无效分享返回假节点(防客户端缓存)',
     tabBar: '隐藏 "Gist 同步" 页',
     tabBar2: '隐藏 "文件" 页',
     auto2: '自定义设置 Key',
@@ -965,7 +980,8 @@ export default {
       be: '后端',
       module: '模块',
       team: '项目组',
-      link: '在 GitHub 上查看',
+      scriptTutorial: '脚本教程',
+      link: 'GitHub',
     },
     changelogs: {
       title: '更新日志',
