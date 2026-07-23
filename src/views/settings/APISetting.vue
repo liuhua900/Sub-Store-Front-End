@@ -4,7 +4,7 @@
       <nut-cell-group :title="$t(`apiSettingPage.currentApi.title`)">
         <nut-cell class="cell" center>
           <template #icon>
-            <img :src="env.meta?.node?.env?.SUB_STORE_BACKEND_CUSTOM_ICON || icon" alt="" class="auto-reverse backend-icon">
+            <img :src="backendIcon" alt="" class="auto-reverse backend-icon">
           </template>
           <template #title>
             <span class="backend-title">{{
@@ -26,7 +26,7 @@
       :title="$t(`apiSettingPage.apiList.title`)"
       :desc="$t(`apiSettingPage.apiList.desc`)"
     >
-      <nut-cell @click="setCurrent('')">
+      <nut-cell @click="handleSwitchClick('')">
         <div class="api-list-item">
           <div class="api-item-left">
             <h2>
@@ -43,28 +43,90 @@
       <nut-cell
         v-for="api in apis"
         :key="api.name"
-        @click="setCurrent(api.name)"
+        @click="handleSwitchClick(api.name)"
       >
         <div class="api-list-item">
           <div class="api-item-left">
             <h2>
-              {{ api.name }}
+              <nut-input
+                v-if="editingApiName === api.name"
+                v-model="editApiNameInput"
+                class="api-name-input"
+                type="text"
+                input-align="left"
+                @click.stop
+                @keyup.enter.stop="saveApiName(api)"
+              />
+              <template v-else>
+                {{ api.name }}
+              </template>
               <nut-tag v-if="currentName === api.name" type="primary" plain>
                 {{ $t(`apiSettingPage.apiList.currentTag`) }}
               </nut-tag>
             </h2>
-            <p>{{ `${api.url.slice(0, 20)}******` }}</p>
+            <p>{{ maskApiUrl(api.url) }}</p>
+            <template v-if="editingApiName === api.name">
+              <nut-input
+                v-model="editShareBaseUrlInput"
+                class="api-share-url-input"
+                type="text"
+                input-align="left"
+                :placeholder="$t(`apiSettingPage.addApi.placeholder.shareBaseUrl`)"
+                :error="!!editShareBaseUrlError"
+                :error-message="editShareBaseUrlError"
+                @click.stop
+                @keyup.enter.stop="saveApiName(api)"
+              />
+            </template>
+            <p v-else-if="api.shareBaseUrl" class="api-share-url">
+              {{ $t(`apiSettingPage.apiList.shareBaseUrl`) }}: {{ api.shareBaseUrl }}
+            </p>
           </div>
           <div class="api-item-right">
-            <font-awesome-icon
-              class="copy-icon"
-              icon="fa-solid fa-clone"
-              @click.stop="copyApi(api)"
-            />
-            <font-awesome-icon
-              icon="fa-solid fa-xmark"
-              @click.stop="deleteApi(api.name)"
-            />
+            <template v-if="editingApiName === api.name">
+              <button
+                type="button"
+                class="api-action-btn"
+                :title="$t(`apiSettingPage.apiList.saveName`)"
+                @click.stop="saveApiName(api)"
+              >
+                <font-awesome-icon icon="fa-solid fa-floppy-disk" />
+              </button>
+              <button
+                type="button"
+                class="api-action-btn"
+                :title="$t(`apiSettingPage.apiList.cancelEditName`)"
+                @click.stop="cancelEditApiName"
+              >
+                <font-awesome-icon icon="fa-solid fa-ban" />
+              </button>
+            </template>
+            <template v-else>
+              <button
+                type="button"
+                class="api-action-btn"
+                :title="$t(`apiSettingPage.apiList.copy`)"
+                @click.stop="copyApi(api)"
+              >
+                <font-awesome-icon icon="fa-solid fa-clone" />
+              </button>
+              <button
+                type="button"
+                class="api-action-btn"
+                :title="$t(`apiSettingPage.apiList.editName`)"
+                @click.stop="startEditApiName(api)"
+              >
+                <font-awesome-icon icon="fa-solid fa-pen-nib" />
+              </button>
+              <button
+                type="button"
+                class="api-action-btn"
+                :title="$t(`apiSettingPage.apiList.delete`)"
+                @click.stop="deleteApi(api.name)"
+              >
+                <font-awesome-icon icon="fa-solid fa-xmark" />
+              </button>
+            </template>
           </div>
         </div>
       </nut-cell>
@@ -91,6 +153,17 @@
             @blur="validateInput"
             @keyup.enter="addApiHandler"
           />
+          <nut-input
+            v-model="addForm.shareBaseUrl"
+            class="input"
+            :placeholder="$t(`apiSettingPage.addApi.placeholder.shareBaseUrl`)"
+            type="text"
+            input-align="left"
+            :error="!!shareBaseUrlError"
+            :error-message="shareBaseUrlError"
+            @blur="validateShareBaseUrlInput(addForm.shareBaseUrl)"
+            @keyup.enter="addApiHandler"
+          />
 
 
           <div v-if="addForm.url.trim()" class="preview-container">
@@ -100,11 +173,11 @@
               <template v-else-if="inputType === 'host'">
                 <span class="preview-protocol">http://</span>
                 <span class="preview-host">{{ parsedHost }}</span>
-                <span class="preview-path">/{{ parsedPath }}</span>
+                <span class="preview-path">{{ (parsedPath && parsedPath !== '/') ? `/${parsedPath}` : '' }}</span>
               </template>
               <template v-else>
-                <span class="preview-origin">{{ currentOrigin }}/</span>
-                <span class="preview-path">{{ parsedPath }}</span>
+                <span class="preview-origin">{{ currentOrigin }}</span>
+                <span class="preview-path">{{ (parsedPath && parsedPath !== '/') ? `/${parsedPath}` : '' }}</span>
               </template>
             </div>
             <div class="preview-type">
@@ -128,24 +201,24 @@
       </div>
     </nut-cell-group>
 
-    <p class="desc-text">
+    <div class="desc-text">
       <p>{{ $t(`apiSettingPage.apiSettingDesc0`) }}</p>
       <p>{{ $t(`apiSettingPage.apiSettingDesc1`) }}</p>
-      {{ $t(`apiSettingPage.apiSettingDesc2`) }}
+      <span>{{ $t(`apiSettingPage.apiSettingDesc2`) }}</span>
       <a
-        href="https://xream.notion.site/Sub-Store-abe6a96944724dc6a36833d5c9ab7c87"
+        href="https://github.com/sub-store-org/Sub-Store/wiki#%E5%AE%89%E8%A3%85"
         target="_blank"
       >
-        https://xream.notion.site/Sub-Store-abe6a96944724dc6a36833d5c9ab7c87</a>
+        {{ $t(`apiSettingPage.apiSettingWiki`) }}</a>
       <br/>
-      4. <a href="https://t.me/zhetengsha/1068" target="_blank">{{ $t('magicPath.troubleshooting') }}</a>
-    </p>
+      4. <a href="https://telegram.me/zhetengsha/218" target="_blank">{{ $t('magicPath.troubleshooting') }}</a>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { Dialog, Toast } from "@nutui/nutui";
-import { ref, onMounted, watchEffect } from 'vue';
+import { computed, ref, onMounted, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useBackend } from '@/hooks/useBackend';
 import { useHostAPI } from '@/hooks/useHostAPI';
@@ -153,7 +226,11 @@ import axios from 'axios';
 
 import { useClipboard } from '@vueuse/core';
 import useV3Clipboard from 'vue-clipboard3';
+import { storeToRefs } from 'pinia';
 import { useAppNotifyStore } from '@/store/appNotify';
+import { useSettingsStore } from '@/store/settings';
+import { createGithubProxyUrlRewriter } from '@/utils/githubProxy';
+import { isValidShareBaseUrl, normalizeShareBaseUrl } from '@/utils/share';
 
 const { t } = useI18n();
 const { copy, isSupported } = useClipboard();
@@ -161,17 +238,34 @@ const { toClipboard: copyFallback } = useV3Clipboard();
 const { showNotify } = useAppNotifyStore();
 
 const { icon, env, isEnvReady } = useBackend();
-const { defaultAPI, currentName, apis, setCurrent, addApi, deleteApi }
+const settingsStore = useSettingsStore();
+const { githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
+const { defaultAPI, currentName, apis, setCurrent, addApi, editApi, editApiName: updateApiName, deleteApi }
     = useHostAPI();
+const githubUrlRewriter = computed(() => {
+  return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+});
+const backendIcon = computed(() => {
+  return githubUrlRewriter.value(
+    env.value?.meta?.node?.env?.SUB_STORE_BACKEND_CUSTOM_ICON || icon.value,
+  ) || icon.value;
+});
 
 const addForm = ref<HostAPI>({
   name: '',
   url: '',
+  shareBaseUrl: '',
 });
+const editingApiName = ref('');
+const editApiNameInput = ref('');
+const editShareBaseUrlInput = ref('');
+const editShareBaseUrlError = ref('');
 
 
 const error = ref('');
+const shareBaseUrlError = ref('');
 const checkingAPI = ref(false);
+const switchingAPI = ref(false);
 
 
 const inputType = ref('path');
@@ -179,6 +273,106 @@ const parsedHost = ref('');
 const parsedPath = ref('');
 const previewUrl = ref('');
 const currentOrigin = ref(window.location.origin);
+
+const copyApi = async (api: HostAPI) => {
+  const url = new URL(window.location.origin);
+  url.searchParams.set('api', api.url);
+  if (api.shareBaseUrl) {
+    url.searchParams.set('shareBaseUrl', api.shareBaseUrl);
+  }
+  if (isSupported) {
+    await copy(url.toString());
+  } else {
+    await copyFallback(url.toString());
+  }
+  showNotify({ title: url.toString() });
+};
+
+const startEditApiName = (api: HostAPI) => {
+  editingApiName.value = api.name;
+  editApiNameInput.value = api.name;
+  editShareBaseUrlInput.value = api.shareBaseUrl || '';
+  editShareBaseUrlError.value = '';
+};
+
+const cancelEditApiName = () => {
+  editingApiName.value = '';
+  editApiNameInput.value = '';
+  editShareBaseUrlInput.value = '';
+  editShareBaseUrlError.value = '';
+};
+
+const maskApiUrl = (url: string) => {
+  return url.length > 26 ? `${url.slice(0, 20)}******` : url;
+};
+
+const validateShareBaseUrlInput = (value?: string | null, target: 'add' | 'edit' = 'add') => {
+  const normalizedValue = normalizeShareBaseUrl(value);
+  const message = normalizedValue && !isValidShareBaseUrl(normalizedValue)
+    ? t('apiSettingPage.addApi.errors.shareBaseUrlInvalid')
+    : '';
+
+  if (target === 'edit') {
+    editShareBaseUrlError.value = message;
+  } else {
+    shareBaseUrlError.value = message;
+  }
+
+  if (message) {
+    showNotify({
+      title: message,
+      type: 'danger',
+    });
+  }
+
+  return !message;
+};
+
+const saveApiName = async (api: HostAPI) => {
+  const nextName = editApiNameInput.value.trim();
+  const nextShareBaseUrl = normalizeShareBaseUrl(editShareBaseUrlInput.value);
+
+  if (!nextName) {
+    showNotify({
+      title: t('apiSettingPage.addApi.errors.nameEmpty'),
+      type: 'danger',
+    });
+    return;
+  }
+
+  if (!validateShareBaseUrlInput(nextShareBaseUrl, 'edit')) {
+    return;
+  }
+
+  const currentShareBaseUrl = normalizeShareBaseUrl(api.shareBaseUrl);
+  if (nextName === api.name && nextShareBaseUrl === currentShareBaseUrl) {
+    cancelEditApiName();
+    return;
+  }
+
+  if (nextName !== api.name && apis.value.some(item => item.name === nextName)) {
+    showNotify({
+      title: t('apiSettingPage.addApi.errors.nameDuplicate'),
+      type: 'danger',
+    });
+    return;
+  }
+
+  let result = nextName === api.name
+    ? true
+    : await updateApiName({ name: nextName, url: api.url });
+  if (result) {
+    result = editApi({
+      name: nextName,
+      url: api.url,
+      shareBaseUrl: nextShareBaseUrl,
+    });
+  }
+  if (result) {
+    cancelEditApiName();
+    showNotify({ title: t('magicPath.success'), type: 'success' });
+  }
+};
 
 // 验证输入
 const validateInput = () => {
@@ -250,76 +444,192 @@ const addApiHandler = async () => {
     });
     return;
   }
+  if (!validateShareBaseUrlInput(addForm.value.shareBaseUrl)) {
+    return;
+  }
+  // 使用解析后的完整URL（host:port 类型会被 previewUrl 补全为 http://...）
+  const addFormUrl = previewUrl.value || (addForm.value.url && addForm.value.url.trim());
+  const addFormName = addForm.value.name && addForm.value.name.trim();
+  const addFormShareBaseUrl = normalizeShareBaseUrl(addForm.value.shareBaseUrl);
+  // 默认API地址
+  const defaultApiUrl = defaultAPI && defaultAPI.trim();
+  
+  // 如果输入的地址与默认API地址不同，且不为空，则进行重复检查
+  if (addFormUrl && addFormUrl !== defaultApiUrl) {
+    const existingApi = apis.value.find(api => api.url === addFormUrl);
+    // 如果存在相同地址的API，提示用户选择是切换还是覆盖
+    if (existingApi) {
+      Dialog({
+        title: t('apiSettingPage.addApi.duplicate.title'),
+        content: t('apiSettingPage.addApi.duplicate.content', { name: existingApi.name }),
+        onOk: async () => {
+          checkingAPI.value = true;
+          try {
+            const ok = await checkApiConnectivity(existingApi.url);
+            if (ok) {
+              setCurrent(existingApi.name);
+              await resetAddForm();
+              showNotify({ title: t('magicPath.success'), type: 'success' });
+            }
+          } finally {
+            checkingAPI.value = false;
+          }
+        },
+        onCancel: async () => {
+          await setApi({
+            name: addFormName,
+            url: addFormUrl,
+            shareBaseUrl: addFormShareBaseUrl,
+            isEditName: true,
+          });
+        },
+        popClass: "auto-dialog",
+        noCancelBtn: false,
+        okText: t('apiSettingPage.addApi.duplicate.confirm'),
+        cancelText: t('apiSettingPage.addApi.duplicate.cancel'),
+        closeOnClickOverlay: true,
+        lockScroll: false,
+      });
+      return;
+    }
+  }
+  // 如果没有重复，直接添加
+  await setApi({ name: addFormName, url: addFormUrl, shareBaseUrl: addFormShareBaseUrl });
+};
 
+// 检查API连通性，成功返回 true，失败自动 showNotify 并返回 false
+const checkApiConnectivity = async (url: string): Promise<boolean> => {
+  try {
+    const res = await axios.get(`${url}/api/utils/env`);
+    if (res?.data?.status !== 'success') {
+      showNotify({ title: t('magicPath.errors.invalid'), type: 'danger' });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    showNotify({ title: t('magicPath.errors.connection'), type: 'danger' });
+    return false;
+  }
+};
+
+// 切换前先检查连通性再调用 setCurrent（使用独立 switchingAPI 避免影响表单 loading 状态）
+const switchToApi = async (name: string) => {
+  if (switchingAPI.value) return;
+  if (name === currentName.value) return;
+
+  const rawUrl = name === ''
+    ? defaultAPI
+    : apis.value.find(api => api.name === name)?.url;
+  if (!rawUrl) {
+    setCurrent(name);
+    return;
+  }
+  // 补全协议头：纯 host:port 格式需要加 http://
+  const url = /^\d+\.\d+\.\d+\.\d+:\d+/.test(rawUrl) || /^localhost:\d+/.test(rawUrl)
+    ? `http://${rawUrl}`
+    : rawUrl;
+  switchingAPI.value = true;
+  Toast.loading(t('apiSettingPage.switchApi.loading'), {
+    cover: true,
+    id: 'switch-api-loading',
+    duration: 0
+  });
+  try {
+    const ok = await checkApiConnectivity(url);
+    if (ok) {
+      setCurrent(name);
+      showNotify({ title: t('magicPath.success'), type: 'success' });
+    }
+  } finally {
+    Toast.hide('switch-api-loading');
+    switchingAPI.value = false;
+  }
+};
+
+const handleSwitchClick = async (name: string) => {
+  if (switchingAPI.value) return;
+  await switchToApi(name);
+};
+
+const setApi = async ({
+  name = '',
+  url = '',
+  shareBaseUrl = '',
+  isEditName = false,
+}: {
+  name?: string;
+  url?: string;
+  shareBaseUrl?: string;
+  isEditName?: boolean;
+}) => {
+  // 开始检查后端API连接状态
   checkingAPI.value = true;
 
   try {
-
-    const apiUrl = previewUrl.value;
-
+    const apiUrl = url;
+    const apiName = name;
     if (!apiUrl) {
       error.value = t('magicPath.errors.empty');
       return;
     }
-
-
-    try {
-      const res = await axios.get(`${apiUrl}/api/utils/env`);
-      if (res?.data?.status !== 'success') {
-        error.value = t('magicPath.errors.invalid');
-        showNotify({
-          title: error.value,
-          type: 'danger'
-        });
-        return;
-      }
-
-
-      const result = await addApi({ name: addForm.value.name, url: apiUrl });
-
-      if (result) {
-        setCurrent(addForm.value.name);
-
-        showNotify({
-          title: t('magicPath.success'),
-          type: 'success'
-        });
-
-
-        addForm.value = {
-          name: '',
-          url: '',
-        };
-        error.value = '';
-      }
-    } catch (e) {
+    const ok = await checkApiConnectivity(apiUrl);
+    if (!ok) {
       error.value = t('magicPath.errors.connection');
-      showNotify({
-        title: t('magicPath.errors.connection'),
-        type: 'danger'
-      });
+      return;
+    }
+    const normalizedShareBaseUrl = normalizeShareBaseUrl(shareBaseUrl);
+
+    let result = null;
+    if (isEditName) {
+      const existingApi = apis.value.find(api => api.url === apiUrl);
+      if (!existingApi) {
+        result = false;
+      } else {
+        const nextName = apiName || existingApi.name;
+        result = nextName === existingApi.name
+          ? true
+          : await updateApiName({ name: nextName, url: apiUrl });
+        if (result) {
+          result = editApi({
+            name: nextName,
+            url: apiUrl,
+            shareBaseUrl: normalizedShareBaseUrl,
+          });
+        }
+      }
+    } else {
+      // 已通过 checkApiConnectivity 验证，跳过 addApi 内部的重复检查
+      result = await addApi({
+        name: apiName,
+        url: apiUrl,
+        shareBaseUrl: normalizedShareBaseUrl,
+      }, true);
+    }
+    console.log('result', result);
+    if (result) {
+      setCurrent(apiName);
+      showNotify({ title: t('magicPath.success'), type: 'success' });
+      addForm.value = { name: '', url: '', shareBaseUrl: '' };
+      error.value = '';
+      shareBaseUrlError.value = '';
     }
   } catch (e) {
     error.value = t('magicPath.errors.unknown');
-    showNotify({
-      title: t('magicPath.errors.unknown'),
-      type: 'danger'
-    });
+    showNotify({ title: t('magicPath.errors.unknown'), type: 'danger' });
   } finally {
     checkingAPI.value = false;
   }
 };
 
-const copyApi = async (api: HostAPI) => {
-  const url = `${window.location.origin}?api=${encodeURIComponent(api.url)}`;
-  if (isSupported) {
-    await copy(url);
-  } else {
-    await copyFallback(url);
-  }
-  showNotify({ title: url });
+const resetAddForm = async () => {
+  addForm.value = {
+    name: '',
+    url: '',
+    shareBaseUrl: '',
+  };
+  error.value = '';
+  shareBaseUrlError.value = '';
 };
-
 
 watchEffect(() => {
   const input = addForm.value.url.trim();
@@ -362,12 +672,12 @@ watchEffect(() => {
       parsedPath.value = '';
     }
 
-    previewUrl.value = `http://${parsedHost.value}/${parsedPath.value}`;
+    previewUrl.value = `http://${parsedHost.value}${(parsedPath.value && parsedPath.value !== '/') ? `/${parsedPath.value}` : ''}`;
   } else {
     inputType.value = 'path';
     parsedPath.value = input.replace(/^\/+/, '');
     parsedHost.value = '';
-    previewUrl.value = `${currentOrigin.value}/${parsedPath.value}`;
+    previewUrl.value = `${currentOrigin.value}${(parsedPath.value && parsedPath.value !== '/') ? `/${parsedPath.value}` : ''}`;
   }
 });
 
@@ -379,7 +689,7 @@ onMounted(() => {
 
   }
   Dialog({
-    title: '后端设置',
+    title: '后端管理',
     content: `请仔细阅读页面底部的说明\n\n该写的都写了`,
     onCancel: () => {
       localStorage.setItem('api-desc-read', '1')
@@ -430,11 +740,15 @@ onMounted(() => {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      cursor: pointer;
 
       .api-item-left {
         display: flex;
         flex-direction: column;
         gap: 4px;
+        flex: 1;
+        min-width: 0;
 
         :deep(.nut-tag) {
           background: transparent !important;
@@ -451,18 +765,73 @@ onMounted(() => {
           color: var(--second-text-color);
         }
 
+        .api-name-input {
+          width: 160px;
+          min-width: 0;
+          padding: 0;
+          background: transparent;
+          color: var(--second-text-color);
+          font-size: 16px;
+          font-weight: bold;
+        }
+
         > p {
           font-size: 12px;
           color: var(--comment-text-color);
         }
+
+        .api-share-url {
+          word-break: break-all;
+        }
+
+        .api-share-url-input {
+          width: min(360px, 100%);
+          min-width: 0;
+          padding: 0;
+          background: transparent;
+          color: var(--second-text-color);
+          font-size: 12px;
+
+          :deep(.nut-input-error-message) {
+            color: var(--danger-color);
+            font-size: 12px;
+            padding: 4px 0 0;
+          }
+        }
       }
 
       .api-item-right {
-        font-size: 20px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
         color: var(--comment-text-color);
-        cursor: pointer;
-        .copy-icon {
-          margin-right: 16px;
+
+        .api-action-btn {
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--comment-text-color);
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.78;
+
+          svg {
+            width: 15px;
+            height: 15px;
+          }
+
+          &:hover,
+          &:focus-visible {
+            background: var(--card-color);
+            color: var(--primary-color);
+            opacity: 1;
+          }
         }
       }
     }
@@ -579,5 +948,6 @@ onMounted(() => {
         color: var(--primary-color);
       }
     }
+
   }
 </style>

@@ -5,41 +5,86 @@ import { useFilesApi } from '@/api/files';
 
 import AppLayout from '@/layout/AppLayout.vue';
 import { useGlobalStore } from '@/store/global';
+import { useSubsStore } from '@/store/subs';
+import { useAppNotifyStore } from '@/store/appNotify';
 import { initStores } from '@/utils/initApp';
+import { isDynamicImportFailure, resetPwaCacheAndReload } from '@/utils/pwa';
 import My from '@/views/My.vue';
-import NotFound from '@/views/NotFound.vue';
+import i18n from '@/locales';
 
 import File from '@/views/File.vue';
-import FileEditor from '@/views/FileEditor.vue';
-import FilePreview from '@/views/FilePreview.vue';
-// import editScript from '@/views/editCode/editScript.vue';
-import IconCollection from '@/views/icon/IconCollection.vue';
-
 import Sub from '@/views/Sub.vue';
-import SubEditor from '@/views/SubEditor.vue';
-
 import Sync from '@/views/Sync.vue';
 
-import ShareManage from '@/views/share/Share.vue';
-
+// import editScript from '@/views/editCode/editScript.vue';
 // import themeSetting from '@/views/themeSetting.vue';
-import moreSetting from '@/views/settings/moreSetting.vue';
-import { Toast } from '@nutui/nutui';
+
+import { Dialog, Toast } from '@nutui/nutui';
 import { toRaw } from 'vue';
 import 'vue-router';
 import { createRouter, createWebHistory } from 'vue-router';
-import aboutUs from '@/views/settings/AboutUs.vue';
-import APISetting from '@/views/settings/APISetting.vue';
 
 // import { SwipeBack } from 'vue-swipe-back'
 
 let globalStore = null;
+let pwaRefreshDialogVisible = false;
+const { t: i18nGlobal } = i18n.global;
+
+const scrollContainers = ['#app', '.app-layout-wrapper', '.page-body'];
+
+const isTabRoute = (route?: { meta?: { needTabBar?: boolean } }) => route?.meta?.needTabBar === true;
+
+const isTabSwitch = (
+  to?: { path?: string; meta?: { needTabBar?: boolean } },
+  from?: { path?: string; meta?: { needTabBar?: boolean } },
+) => Boolean(to?.path && from?.path && to.path !== from.path && isTabRoute(to) && isTabRoute(from));
+
+const resetDocumentScrollStyles = () => {
+  ['html', 'body', '#app'].forEach(selector => {
+    const element = document.querySelector(selector) as HTMLElement | null;
+
+    if (!element) return;
+
+    element.style['overflow-y'] = '';
+    element.style.height = '';
+  });
+};
+
+const getElementScrollTop = (selector: string) => {
+  return (document.querySelector(selector) as HTMLElement | null)?.scrollTop || 0;
+};
+
+const getCurrentScrollTop = () => {
+  return document.documentElement.scrollTop
+    || document.body.scrollTop
+    || getElementScrollTop('#app')
+    || getElementScrollTop('.app-layout-wrapper')
+    || getElementScrollTop('.page-body')
+    || 0;
+};
+
+const scrollToPosition = (top = 0) => {
+  window.scrollTo({ left: 0, top, behavior: "instant" as any });
+  document.documentElement.scrollTop = top;
+  document.body.scrollTop = top;
+
+  scrollContainers.forEach(selector => {
+    document.querySelector(selector)?.scrollTo?.({ left: 0, top });
+  });
+};
+
+const resetPwaRefreshDialogVisible = () => {
+  pwaRefreshDialogVisible = false;
+};
 
 declare module 'vue-router' {
   interface RouteMeta {
     title: string;
     needTabBar: boolean;
     needNavBack: boolean;
+    supportsListViewMode?: boolean;
+    supportsListSearch?: boolean;
+    hideSideBarInWideScreenNarrowMode?: boolean;
   }
 }
 
@@ -88,6 +133,8 @@ const router = createRouter({
             title: 'sub',
             needTabBar: true,
             needNavBack: false,
+            supportsListViewMode: true,
+            supportsListSearch: true,
           },
         },
         {
@@ -97,6 +144,8 @@ const router = createRouter({
             title: 'sync',
             needTabBar: true,
             needNavBack: false,
+            supportsListViewMode: true,
+            supportsListSearch: true,
           },
         },
         {
@@ -115,15 +164,51 @@ const router = createRouter({
             title: 'file',
             needTabBar: true,
             needNavBack: false,
+            supportsListViewMode: true,
+            supportsListSearch: true,
           },
         },
         {
           path: '/shares',
-          component: ShareManage,
+          component: () => import('@/views/share/Share.vue'),
           meta: {
             title: 'shareManage',
+            needTabBar: true,
+            needNavBack: false,
+            supportsListViewMode: true,
+            supportsListSearch: true,
+            hideSideBarInWideScreenNarrowMode: true,
+          },
+        },
+        {
+          path: '/edit/shares/:name',
+          component: () => import('@/views/share/ShareEditorPage.vue'),
+          meta: {
+            title: 'shareEditor',
             needTabBar: false,
             needNavBack: true,
+          },
+        },
+        {
+          path: '/archives',
+          component: () => import('@/views/archive/Archive.vue'),
+          meta: {
+            title: 'archive',
+            needTabBar: false,
+            needNavBack: true,
+            supportsListViewMode: true,
+            supportsListSearch: true,
+            hideSideBarInWideScreenNarrowMode: true,
+          },
+        },
+        {
+          path: '/logs',
+          component: () => import('@/views/Logs.vue'),
+          meta: {
+            title: 'logs',
+            needTabBar: false,
+            needNavBack: true,
+            hideSideBarInWideScreenNarrowMode: true,
           },
         },
         // {
@@ -137,7 +222,7 @@ const router = createRouter({
         // },
         {
           path: '/preview',
-          component: FilePreview,
+          component: () => import('@/views/FilePreview.vue'),
           meta: {
             title: 'preview',
             needTabBar: false,
@@ -146,7 +231,7 @@ const router = createRouter({
         },
         {
           path: '/edit/:editType(files)/:id',
-          component: FileEditor,
+          component: () => import('@/views/FileEditor.vue'),
           meta: {
             title: 'fileEditor',
             needTabBar: false,
@@ -155,9 +240,18 @@ const router = createRouter({
         },
         {
           path: '/edit/:editType(subs|collections)/:id',
-          component: SubEditor,
+          component: () => import('@/views/SubEditor.vue'),
           meta: {
             title: 'subEditor',
+            needTabBar: false,
+            needNavBack: true,
+          },
+        },
+        {
+          path: '/edit/sync/:id',
+          component: () => import('@/views/SyncEditor.vue'),
+          meta: {
+            title: 'syncEditor',
             needTabBar: false,
             needNavBack: true,
           },
@@ -172,46 +266,40 @@ const router = createRouter({
         //   },
         // },
         {
-          path: '/icon/collection',
-          component: IconCollection,
-          meta: {
-            title: 'iconCollection',
-            needTabBar: true,
-            needNavBack: true,
-          },
-        },
-        {
           path: '/settings/more',
-          component: moreSetting,
+          component: () => import('@/views/settings/moreSetting.vue'),
           meta: {
             title: 'moreSetting',
             needTabBar: false,
             needNavBack: true,
+            hideSideBarInWideScreenNarrowMode: true,
           },
         },
         {
           path: '/settings/api',
-          component: APISetting,
+          component: () => import('@/views/settings/APISetting.vue'),
           meta: {
             title: 'apiSetting',
             needTabBar: false,
             needNavBack: true,
+            hideSideBarInWideScreenNarrowMode: true,
           },
         },
         {
           path: '/aboutUs',
-          component: aboutUs,
+          component: () => import('@/views/settings/AboutUs.vue'),
           meta: {
             title: 'aboutUs',
             needTabBar: false,
             needNavBack: true,
+            hideSideBarInWideScreenNarrowMode: true,
           },
         },
       ],
     },
     {
       path: '/404',
-      component: NotFound,
+      component: () => import('@/views/NotFound.vue'),
       meta: {
         title: 'notFound',
         needTabBar: false,
@@ -220,7 +308,7 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)',
-      component: NotFound,
+      component: () => import('@/views/NotFound.vue'),
       meta: {
         title: 'notFound',
         needTabBar: false,
@@ -230,18 +318,49 @@ const router = createRouter({
   ],
 });
 
+router.onError((error) => {
+  if (!isDynamicImportFailure(error) || pwaRefreshDialogVisible) {
+    return;
+  }
+
+  pwaRefreshDialogVisible = true;
+  Dialog({
+    title: i18nGlobal("globalNotify.refresh.dynamicImportFailedTitle"),
+    content: i18nGlobal("globalNotify.refresh.dynamicImportFailedContent"),
+    popClass: "auto-dialog",
+    textAlign: "left",
+    okText: i18nGlobal("globalNotify.refresh.reloadNow"),
+    cancelText: i18nGlobal("globalNotify.refresh.backHome"),
+    closeOnPopstate: true,
+    closeOnClickOverlay: false,
+    lockScroll: false,
+    beforeClose: () => {
+      resetPwaRefreshDialogVisible();
+      return true;
+    },
+    onClosed: resetPwaRefreshDialogVisible,
+    onCancel: async () => {
+      resetPwaRefreshDialogVisible();
+      await router.replace("/");
+    },
+    onOk: async () => {
+      resetPwaRefreshDialogVisible();
+      await resetPwaCacheAndReload({
+        notify: useAppNotifyStore().showNotify,
+        t: i18nGlobal,
+      });
+    },
+  });
+});
+
 // 全局前置守卫
 router.afterEach(async (to, from) => {
-  document.querySelector('html').style['overflow-y'] = '';
-  document.querySelector('html').style.height = '';
-  document.body.style.height = '';
-  document.body.style['overflow-y'] = '';
-  (document.querySelector('#app') as HTMLElement).style['overflow-y'] = '';
-  (document.querySelector('#app') as HTMLElement).style.height = '';
+  resetDocumentScrollStyles();
   // console.log(`afterEach ${from.path} => ${to.path}`)
   if (to?.path && from?.path !== to?.path) {
+    const shouldResetTabScroll = isTabSwitch(to, from);
     let scrollTop = 0;
-    if (to?.meta?.needTabBar && globalStore !== null) {
+    if (to?.meta?.needTabBar && globalStore !== null && !shouldResetTabScroll) {
       const savedPositions = toRaw(globalStore.savedPositions);
       if (savedPositions[to.path]?.top) {
         scrollTop = savedPositions[to.path]?.top
@@ -250,22 +369,26 @@ router.afterEach(async (to, from) => {
     }
     // console.log(`${to.path} 滚动到：${scrollTop}`)
     await nextTick()
-    window.scrollTo({
-      top: scrollTop,
-      behavior: "instant" as any
-    });
+    scrollToPosition(scrollTop);
+
+    if (shouldResetTabScroll) {
+      requestAnimationFrame(() => scrollToPosition(0));
+    }
   }
 });
 router.beforeEach((to, from) => {
   document.title = 'Sub Store';
   // console.log(`beforeEach ${from.path} => ${to.path}`)
+  if (to?.path !== '/subs') {
+    useSubsStore().cancelFetchFlows();
+  }
   if (!globalStore) {
     globalStore = useGlobalStore();
   }
   if (globalStore) {
     if (from?.meta?.needTabBar && from?.path !== to?.path) {
       // if (from?.meta?.needTabBar) {
-        const scrollTop = document.documentElement.scrollTop || document.body.scrollTop
+        const scrollTop = isTabSwitch(to, from) ? 0 : getCurrentScrollTop();
         // console.log(`保存 ${from.path} 滚动位置：${scrollTop}`)
         globalStore.setSavedPositions(from.path, { left: 0, top: scrollTop })
       }
@@ -307,8 +430,8 @@ router.beforeResolve(async (to, from) => {
 
   // 进入编辑页面前查询是否存在订阅
   if (to.fullPath.startsWith('/edit/')) {
-    const name = to.params.id as string;
-    if (!['UNTITLED', 'UNTITLED-mihomoProfile'].includes(name)) {
+    const name = (to.params.id || to.params.name) as string;
+    if (!['UNTITLED', 'UNTITLED-mihomoConfig', 'UNTITLED-mihomoProfile'].includes(name)) {
       try {
         if (to.params.editType === 'subs') {
           await useSubsApi().getOne('sub', name);

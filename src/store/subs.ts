@@ -4,12 +4,101 @@ import { useShareApi } from '@/api/share';
 import i18n from '@/locales';
 import { useAppNotifyStore } from '@/store/appNotify';
 import { getFlowsUrlList } from '@/utils/getFlowsUrlList';
+import { isAbortError, runFrontendRequestTask } from '@/utils/requestConcurrency';
+import { isShareExpirationMode, isShareExpirationUnit } from '@/utils/share';
+import { normalizeTagArray } from '@/utils/shareTags';
 import { defineStore } from 'pinia';
 
 const { t } = i18n.global;
 const subsApi = useSubsApi();
 const filesApi = useFilesApi();
 const shareApi = useShareApi();
+
+const fetchFlowsAbortControllers = new Set<AbortController>();
+const fetchFlowAbortControllers = new Map<string, AbortController>();
+const latestFlowRequestVersions = new Map<string, number>();
+let flowRequestSequence = 0;
+
+const canFetchFlowsForCurrentPage = () => window.location.pathname === '/subs';
+
+const createFlowRequestState = (flowKey: string, parentSignal: AbortSignal) => {
+  fetchFlowAbortControllers.get(flowKey)?.abort();
+
+  const version = ++flowRequestSequence;
+  const abortController = new AbortController();
+  const abortCurrentFlow = () => abortController.abort();
+
+  fetchFlowAbortControllers.set(flowKey, abortController);
+  latestFlowRequestVersions.set(flowKey, version);
+
+  if (parentSignal.aborted) {
+    abortController.abort();
+  } else {
+    parentSignal.addEventListener('abort', abortCurrentFlow, { once: true });
+  }
+
+  return {
+    signal: abortController.signal,
+    version,
+    clear: () => {
+      parentSignal.removeEventListener('abort', abortCurrentFlow);
+      if (fetchFlowAbortControllers.get(flowKey) === abortController) {
+        fetchFlowAbortControllers.delete(flowKey);
+      }
+      clearFlowRequestVersion(flowKey, version);
+    },
+  };
+};
+
+const isLatestFlowRequest = (flowKey: string, version: number, signal?: AbortSignal) => {
+  return !signal?.aborted && latestFlowRequestVersions.get(flowKey) === version;
+};
+
+const clearFlowRequestVersion = (flowKey: string, version: number) => {
+  if (latestFlowRequestVersions.get(flowKey) === version) {
+    latestFlowRequestVersions.delete(flowKey);
+  }
+};
+
+type FetchFlowsOptions = {
+  cancelPrevious?: boolean;
+  missingOnly?: boolean;
+  priority?: number;
+};
+
+const normalizeShare = (share: Share): Share => {
+  const expiresAt = share?.expiresAt == null ? null : Number(share.expiresAt);
+  const exp = share?.exp == null ? null : Number(share.exp);
+  const count = share?.count == null ? null : Number(share.count);
+  const usedCount = share?.usedCount == null ? null : Number(share.usedCount);
+  const mode = isShareExpirationMode(share?.mode) ? share.mode : null;
+  const expiresValue = share?.expiresValue == null ? null : Number(share.expiresValue);
+  const expiresUnit = isShareExpirationUnit(share?.expiresUnit) ? share.expiresUnit : null;
+
+  return {
+    ...share,
+    tag: normalizeTagArray(share?.tag),
+    mode,
+    expiresValue: Number.isFinite(expiresValue) && expiresValue > 0 ? String(expiresValue) : null,
+    expiresUnit,
+    expiresAt: Number.isFinite(expiresAt) ? expiresAt : null,
+    exp: Number.isFinite(exp) ? exp : null,
+    count: Number.isSafeInteger(count) ? count : null,
+    usedCount: Number.isSafeInteger(usedCount) ? usedCount : null,
+  };
+};
+
+type ShareUpdateResult =
+  | {
+      status: 'success';
+      token: string | null;
+    }
+  | {
+      status: 'retry_create';
+    }
+  | {
+      status: 'failed';
+    };
 // class TaskProcessor {
 //   #fulfilledIndexes; // 已完成任务的索引集合
 //   #results; // 所有任务的执行结果
@@ -156,48 +245,6 @@ const shareApi = useShareApi();
 //     return this.#resolvePromises(this.#results);
 //   }
 // }
-function executeAsyncTasks(tasks, { wrap = false, result = false, concurrency = 1 } = {}) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      let running = 0
-      const results = []
-
-      let index = 0
-
-      function executeNextTask() {
-        while (index < tasks.length && running < concurrency) {
-          const taskIndex = index++
-          const currentTask = tasks[taskIndex]
-          running++
-
-          currentTask()
-            .then(data => {
-              if (result) {
-                results[taskIndex] = wrap ? { data } : data
-              }
-            })
-            .catch(error => {
-              if (result) {
-                results[taskIndex] = wrap ? { error } : error
-              }
-            })
-            .finally(() => {
-              running--
-              executeNextTask()
-            })
-        }
-
-        if (running === 0) {
-          return resolve(result ? results : undefined)
-        }
-      }
-
-      await executeNextTask()
-    } catch (e) {
-      reject(e)
-    }
-  })
-}
 export const useSubsStore = defineStore('subsStore', {
   state: (): SubsStoreState => {
     return {
@@ -232,32 +279,48 @@ export const useSubsStore = defineStore('subsStore', {
   },
   actions: {
     async fetchSubsData() {
-      await Promise.all([subsApi.getSubs(), subsApi.getCollections(), filesApi.getWholeFiles(), shareApi.getShares()]).then(res => {
-        if ('data' in res[0].data) {
-          this.subs = res[0].data.data.map(i => {
-            if (!Array.isArray(i.tag)) {
-              i.tag = []
-            }
-            return i
-          });
-        }
-        if ('data' in res[1].data) {
-          this.collections = res[1].data.data.map(i => {
-            if (!Array.isArray(i.tag)) {
-              i.tag = []
-            }
-            return i
-          });
-        }
-        if ('data' in res[2].data) {
-          this.files = res[2].data.data;
-        }
-        if ('data' in res[3].data) {
-          this.shares = res[3].data.data;
-        }
-      }).catch((err) => {
-        console.log('fetchSubsData err', err);
-      });
+      await Promise.allSettled([
+        runFrontendRequestTask(async () => {
+          const res = await subsApi.getSubs();
+          if ('data' in res.data) {
+            this.subs = res.data.data.map(i => {
+              if (!Array.isArray(i.tag)) {
+                i.tag = []
+              }
+              return i
+            });
+          }
+        }, 'subs.getSubs'),
+        runFrontendRequestTask(async () => {
+          const res = await subsApi.getCollections();
+          if ('data' in res.data) {
+            this.collections = res.data.data.map(i => {
+              if (!Array.isArray(i.tag)) {
+                i.tag = []
+              }
+              return i
+            });
+          }
+        }, 'subs.getCollections'),
+        runFrontendRequestTask(async () => {
+          const res = await filesApi.getWholeFiles();
+          if ('data' in res.data) {
+            this.files = res.data.data;
+          }
+        }, 'files.getWholeFiles'),
+        runFrontendRequestTask(async () => {
+          const res = await shareApi.getShares();
+          if ('data' in res.data) {
+            this.shares = res.data.data.map(normalizeShare);
+          }
+        }, 'share.getShares'),
+      ]);
+    },
+    setOneData(type: string, name: string, data: any) {
+      const index = this[type].findIndex(item => item.name === name);
+      if (index !== -1) {
+        this[type][index] = data;
+      }
     },
     async updateOneData(type: string, name: string) {
       try {
@@ -277,26 +340,85 @@ export const useSubsStore = defineStore('subsStore', {
         console.log('updateOneData error', error);
       }
     },
-    async fetchFlows(sub?: Sub[]) {
+    cancelFetchFlows() {
+      if (
+        fetchFlowsAbortControllers.size === 0
+        && fetchFlowAbortControllers.size === 0
+        && latestFlowRequestVersions.size === 0
+      ) return;
+
+      fetchFlowsAbortControllers.forEach(controller => controller.abort());
+      fetchFlowsAbortControllers.clear();
+      fetchFlowAbortControllers.forEach(controller => controller.abort());
+      fetchFlowAbortControllers.clear();
+      latestFlowRequestVersions.clear();
+      console.log('[frontend-request-concurrency] cancel fetchFlows');
+    },
+    async fetchFlows(sub?: Sub[], options: FetchFlowsOptions = {}) {
       type FlowUrlItem = [string, string, boolean, boolean, boolean];
-      const asyncGetFlow = async ([url, name, noFlow, hideExpire, showRemaining], index) => {
+      if (!canFetchFlowsForCurrentPage()) {
+        this.cancelFetchFlows();
+        console.log('[frontend-request-concurrency] skip fetchFlows outside /subs');
+        return;
+      }
+
+      const isTargetedFetch = Boolean(sub);
+      const {
+        cancelPrevious = !isTargetedFetch,
+        missingOnly = false,
+        priority = isTargetedFetch ? 100 : 0,
+      } = options;
+
+      if (cancelPrevious) {
+        this.cancelFetchFlows();
+      }
+
+      const abortController = new AbortController();
+      fetchFlowsAbortControllers.add(abortController);
+      const { signal } = abortController;
+
+      const asyncGetFlow = async (
+        [url, name, noFlow, hideExpire, showRemaining],
+        index,
+        requestVersion: number,
+        requestSignal: AbortSignal,
+        clearRequest: () => void,
+      ) => {
         console.log(`[START] ${index} ${url}fetching flow`)
-        if (noFlow) {
-          this.flows[url] = { status:'noFlow' };
-        } else {
-          try {
-            const { data } = await subsApi.getFlow(name);
-            this.flows[url] = {...data, hideExpire, showRemaining };
-          } catch (e) {
+        try {
+          if (!isLatestFlowRequest(url, requestVersion, requestSignal)) {
+            console.log(`[SKIP] ${index} ${url} stale flow`)
+            return;
           }
+
+          if (noFlow) {
+            this.flows[url] = { status:'noFlow' };
+          } else {
+            const res = await subsApi.getFlow(name, requestSignal);
+            if (!isLatestFlowRequest(url, requestVersion, requestSignal)) {
+              console.log(`[SKIP] ${index} ${url} stale flow`)
+              return;
+            }
+
+            const data = res?.data;
+            if (data) {
+              this.flows[url] = {...data, hideExpire, showRemaining };
+            }
+          }
+        } catch (e) {
+          if (isAbortError(e) || requestSignal.aborted) {
+            throw e;
+          }
+        } finally {
+          clearRequest();
+          console.log(`[END] ${index} ${url} fetching flow`)
         }
-        // await new Promise(resolve => setTimeout(resolve, 2000));
-        console.log(`[END] ${index} ${url} fetching flow`)
       };
       // const subs = sub || this.subs;
       // getFlowsUrlList(subs).forEach(asyncGetFlow);
       // 多次反复开启 容易爆内存 尝试分批请求 3/100ms
-      const flowsUrlList = getFlowsUrlList(sub || this.subs) as FlowUrlItem[];
+      const flowsUrlList = (getFlowsUrlList(sub || this.subs) as FlowUrlItem[])
+        .filter(([url]) => !missingOnly || !(url in this.flows));
       // const processor = new TaskProcessor();
       // await processor.runTasks({
       //   tasks: flowsUrlList.map((item, index) => async() => {
@@ -307,21 +429,47 @@ export const useSubsStore = defineStore('subsStore', {
       //   waitTime: 0,
       // });
 
-      const flowTasks = [] as Array<() => Promise<void>>;
+      const flowTasks = [] as Array<{ label: string; signal: AbortSignal; task: () => Promise<void> }>;
 
       flowsUrlList.forEach((item, index) => {
         const [url, , noFlow] = item;
+        const requestState = createFlowRequestState(url, signal);
         if (noFlow) {
-          this.flows[url] = { status:'noFlow' };
+          if (isLatestFlowRequest(url, requestState.version, requestState.signal)) {
+            this.flows[url] = { status:'noFlow' };
+          }
+          requestState.clear();
           return;
         }
-        flowTasks.push(() => asyncGetFlow(item, index));
+        flowTasks.push({
+          label: `subs.getFlow:${item[1]}`,
+          signal: requestState.signal,
+          task: () => asyncGetFlow(
+            item,
+            index,
+            requestState.version,
+            requestState.signal,
+            requestState.clear,
+          ),
+        });
       });
 
-      await executeAsyncTasks(
-        flowTasks,
-        { concurrency: localStorage.getItem('concurrency') ? parseInt(localStorage.getItem('concurrency') as string, 10) : 3 }
-      )
+      try {
+        await Promise.all(flowTasks.map(({ label, signal: flowSignal, task }) => (
+          runFrontendRequestTask(task, label, { priority, signal: flowSignal })
+            .catch((error) => {
+              if (!isAbortError(error) && !flowSignal.aborted) {
+                throw error;
+              }
+            })
+        )))
+      } catch (error) {
+        if (!isAbortError(error) && !signal.aborted) {
+          throw error;
+        }
+      } finally {
+        fetchFlowsAbortControllers.delete(abortController);
+      }
   
       // const batches = [];
 
@@ -336,86 +484,153 @@ export const useSubsStore = defineStore('subsStore', {
       //   // await new Promise((resolve) => setTimeout(resolve, 150));
       // }
     },
-    async deleteSub(type: SubsType, name: string) {
+    async deleteSub(
+      type: SubsType,
+      name: string,
+      mode?: DeleteMode,
+      isShowNotify: boolean = true,
+    ) {
       try {
         const { showNotify } = useAppNotifyStore();
 
-        const { data } = await subsApi.deleteSub(type, name);
+        const { data } = await subsApi.deleteSub(type, name, mode);
         if (data.status === 'success') {
           await this.fetchSubsData();
-          showNotify({
-            type: 'danger',
-            title: t('subPage.deleteSub.succeedNotify'),
+          isShowNotify && showNotify({
+            type: mode === 'archive' ? 'success' : 'danger',
+            title:
+              mode === 'archive'
+                ? t('archivePage.liveDelete.succeedNotify')
+                : t('subPage.deleteSub.succeedNotify'),
           });
-        } 
+          return true;
+        }
       } catch (error) {
         console.log('deleteSub error', error);
       }
+
+      return false;
     },
     async fetchFiles() {
-      Promise.all([filesApi.getWholeFiles()]).then(res => {
-        if ('data' in res[0].data) {
-          this.files = res[0].data.data;
+      await runFrontendRequestTask(() => filesApi.getWholeFiles(), 'files.getWholeFiles').then(res => {
+        if ('data' in res.data) {
+          this.files = res.data.data;
         }
       }).catch((err) => {
         console.log('fetchFiles err', err);
       });
     },
-    async deleteFile(name: string) {
+    async deleteFile(
+      name: string,
+      mode?: DeleteMode,
+      isShowNotify: boolean = true,
+    ) {
       try {
         const { showNotify } = useAppNotifyStore();
 
-        const { data } = await filesApi.deleteFile(name);
+        const { data } = await filesApi.deleteFile(name, mode);
         if (data.status === 'success') {
           await this.fetchFiles();
-          showNotify({
-            type: 'danger',
-            title: t('filePage.deleteFile.succeedNotify'),
+          isShowNotify && showNotify({
+            type: mode === 'archive' ? 'success' : 'danger',
+            title:
+              mode === 'archive'
+                ? t('archivePage.liveDelete.succeedNotify')
+                : t('filePage.deleteFile.succeedNotify'),
           });
-        } 
+          return true;
+        }
       } catch (error) {
         console.log('deleteFile error', error);
       }
+
+      return false;
     },
     async fetchShareData() {
-      Promise.all([shareApi.getShares()]).then((res) => {
-        if ("data" in res[0].data) {
-          console.log('res[0].data.data', res[0].data.data);
-          this.shares = res[0].data.data;
+      await runFrontendRequestTask(() => shareApi.getShares(), 'share.getShares').then((res) => {
+        if ("data" in res.data) {
+          this.shares = res.data.data.map(normalizeShare);
         }
       }).catch((err) => {
         console.log('fetchShareData err', err);
       });
     },
-    async deleteShare(token: string, type: string, name: string, isShowNotify: boolean = true) {
+    async deleteShare(
+      token: string,
+      type: string,
+      name: string,
+      mode?: DeleteMode,
+      isShowNotify: boolean = true,
+    ) {
       try {
         const { showNotify } = useAppNotifyStore();
 
-        const { data } = await shareApi.deleteShare(token, type, name);
+        const { data } = await shareApi.deleteShare(token, type, name, mode);
         if (data.status === "success") {
           await this.fetchShareData();
           isShowNotify && showNotify({
-            type: "danger",
-            title: t("sharePage.deleteShare.succeedNotify"),
+            type: mode === 'archive' ? 'success' : "danger",
+            title:
+              mode === 'archive'
+                ? t('archivePage.liveDelete.succeedNotify')
+                : t("sharePage.deleteShare.succeedNotify"),
           });
+          return true;
         }
       } catch (error) {
         console.log('deleteShare error', error);
       }
+
+      return false;
     },
-    async updateShare(token: string, type: string, name:string, data: ShareToken) {
-      const { showNotify } = useAppNotifyStore();
+    async updateShare(
+      token: string,
+      type: string,
+      name: string,
+      data: ShareToken,
+      isShowNotify: boolean = true,
+    ): Promise<ShareUpdateResult> {
+      let deleteSucceeded = false;
       try {
-        await shareApi.deleteShare(token, type, name);
-        await shareApi.createShare(data);
-        await this.fetchShareData();
+        const { showNotify } = useAppNotifyStore();
+
+        const deleteRes = await shareApi.deleteShare(token, type, name);
+        if (deleteRes.data.status !== 'success') {
+          throw new Error('deleteShare failed');
+        }
+        deleteSucceeded = true;
+
+        const createRes = await shareApi.createShare(data);
+        if (createRes.data.status === 'success') {
+          await this.fetchShareData();
+          isShowNotify && showNotify({
+            type: 'success',
+            title: t('sharePage.editor.edit.succeedNotify'),
+          });
+          return {
+            status: 'success',
+            token: createRes.data.data?.token || null,
+          };
+        }
+
+        return {
+          status: 'retry_create',
+        };
       } catch (error) {
         console.log('updateShare error', error);
+      }
+
+      if (isShowNotify) {
+        const { showNotify } = useAppNotifyStore();
         showNotify({
-          type: "danger",
-          title: t("sharePage.deleteShare.failNotify"),
+          type: 'danger',
+          title: t('sharePage.editor.failNotify'),
         });
       }
+
+      return {
+        status: deleteSucceeded ? 'retry_create' : 'failed',
+      };
     },
   },
 });

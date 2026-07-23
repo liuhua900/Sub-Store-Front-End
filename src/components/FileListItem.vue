@@ -2,6 +2,7 @@
   <!-- 滚动内容 -->
   <nut-swipe
     class="sub-item-swipe"
+    :class="{ 'is-dual-column': props.isDualColumn }"
     ref="swipe"
     :disabled="props.disabled"
     @close="setIsMoveClose()"
@@ -9,35 +10,36 @@
   >
     <div
       class="sub-item-wrapper"
-      :style="{ padding: appearanceSetting.isSimpleMode ? '9px' : '16px' }"
+      :class="{ 'is-dual-column': props.isDualColumn }"
+      :style="{ padding: itemPadding, '--icon-fit': iconFit }"
       @click="handleContentClick"
     >
       <div
         @click.stop="previewFile"
         class="sub-img-wrappers"
-        :style="{ 'margin-top': appearanceSetting.isSimpleMode ? '5px' : '0' }"
+        :style="{ 'margin-top': imageMarginTop }"
       >
         <!-- icon visible -->
         <div v-if="appearanceSetting.isShowIcon">
           <div v-if="isIconColor">
             <nut-avatar
               v-if="props[props.type].icon"
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="props[props.type].icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(props[props.type].icon)"
               bg-color=""
             />
             <nut-avatar
               v-else
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(icon)"
               bg-color=""
             />
           </div>
           <div v-else>
             <nut-avatar
               class="sub-item-customer-icon"
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="props[props.type].icon || icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(props[props.type].icon || icon)"
               bg-color=""
             />
           </div>
@@ -45,14 +47,23 @@
       </div>
       <div class="sub-item-content">
         <div class="sub-item-title-wrapper">
-          <h3 v-if="!appearanceSetting.isSimpleMode" class="sub-item-title">
-            {{ displayName || name }}
+          <h3
+            v-if="!appearanceSetting.isSimpleMode"
+            class="sub-item-title"
+            :title="displayName"
+          >
+            <span class="sub-item-name">{{ displayName }}</span>
             <span v-for="i in tag" :key="i" class="tag">
               <nut-tag>{{ i }}</nut-tag>
             </span>
           </h3>
-          <h3 v-else class="sub-item-title" style="color: var(--primary-text-color); font-size: 16px">
-            {{ displayName || name }}
+          <h3
+            v-else
+            class="sub-item-title"
+            style="color: var(--primary-text-color); font-size: 16px"
+            :title="displayName"
+          >
+            <span class="sub-item-name">{{ displayName }}</span>
             <span v-for="i in tag" :key="i" class="tag">
               <nut-tag>{{ i }}</nut-tag>
             </span>
@@ -60,8 +71,8 @@
 
           <!-- onClickCopyLink 拷贝 -->
           <div
-            style="position: relative"
-            :style="{ top: appearanceSetting.isSimpleMode ? '8px' : '0' }"
+            class="sub-item-actions"
+            :style="{ top: titleActionTop }"
           >
             <!-- 预览 -->
             <button
@@ -73,7 +84,7 @@
             </button>
             <button
               v-if="shareBtnVisible"
-              class="share-sub-link"
+              class="public-link-action"
               @click.stop="onClickShareLink"
             >
               <font-awesome-icon icon="fa-solid fa-share-nodes" />
@@ -111,8 +122,12 @@
               </span>
             </template>
           </p>
-          <p v-if="remark" class="sub-item-remark">
-            <span>{{ remarkText }}</span>
+          <p
+            v-if="isDualNonSimpleMode || remark"
+            class="sub-item-remark"
+            :class="{ 'dual-non-simple-second-line': isDualNonSimpleMode }"
+          >
+            <span>{{ isDualNonSimpleMode ? nonSimpleSecondLine : remarkText }}</span>
           </p>
         </template>
 
@@ -120,12 +135,12 @@
           <p class="sub-item-detail-isSimple">
             <template v-if="typeof flow === 'string'">
               <span style="font-weight: normal">
-                {{ flow }}
+                {{ simpleDetailLine }}
               </span>
             </template>
           </p>
           <p
-            v-if="remark && appearanceSetting.isSimpleShowRemark"
+            v-if="remark && appearanceSetting.isSimpleShowRemark && !shouldInlineRemarkInSecondLine"
             class="sub-item-remark"
           >
             <span>{{ remarkText }}</span>
@@ -147,10 +162,6 @@
         </nut-button>
       </div>
       <div class="sub-item-swipe-btn-wrapper">
-        <!-- <a
-          :href="`${host}/api/wholeFile/${encodeURIComponent(name)}?raw=1`"
-          target="_blank"
-        > -->
         <nut-button
           shape="square"
           type="success"
@@ -222,7 +233,9 @@
     v-if="filePreviewIsVisible"
     :name="name"
     :previewData="previewData"
+    :show-refresh="true"
     @closePreview="closePreview"
+    @refresh="refreshPreview"
   />
 </template>
 
@@ -237,25 +250,34 @@
   import { useSettingsStore } from '@/store/settings';
   import { useSubsStore } from '@/store/subs';
   import { getString } from '@/utils/flowTransfer';
+  import { createGithubProxyUrlRewriter } from '@/utils/githubProxy';
+  import { resolveImageFit } from '@/utils/iconFit';
   import { isMobile } from '@/utils/isMobile';
+  import { openManagedDeleteDialog } from '@/utils/archive';
   import FilePreview from '@/views/FilePreview.vue';
   import { Dialog, Toast } from '@nutui/nutui';
   import { useClipboard } from '@vueuse/core';
   import dayjs from 'dayjs';
   import { storeToRefs } from 'pinia';
-  import { computed, createVNode, ref, toRaw } from 'vue';
+  import { computed, ref, toRaw } from 'vue';
   import useV3Clipboard from 'vue-clipboard3';
   import { useI18n } from 'vue-i18n';
   import { useRouter, useRoute } from 'vue-router';
   import { useHostAPI } from '@/hooks/useHostAPI';
   import { useBackend } from "@/hooks/useBackend";
   import clashmetaIcon from '@/assets/icons/clashmeta_color.png';
+  import { isMihomoConfigFileType } from "@/utils/fileType";
+  import { formatPreviewError } from "@/utils/previewError";
+  import { downloadBlobResponse } from '@/utils/download';
 
   const { copy, isSupported } = useClipboard();
   const { toClipboard: copyFallback } = useV3Clipboard();
 
   const { t } = useI18n();
   const { env } = useBackend();
+  const isArchiveEnabled = computed(() => {
+    return env.value?.feature?.archive;
+  });
 
   const props = defineProps<{
     type: 'sub' | 'collection' | 'file';
@@ -263,6 +285,7 @@
     sub?: Sub;
     collection?: Collection;
     disabled?: boolean;
+    isDualColumn?: boolean;
   }>();
   // console.log('props.disabled')
   // console.log(props.disabled)
@@ -281,7 +304,7 @@
   const subsStore = useSubsStore();
   const subsApi = useSubsApi();
   const filesApi = useFilesApi();
-  const { appearanceSetting } = storeToRefs(settingsStore);
+  const { appearanceSetting, githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
   const {
     isFlowFetching,
     // isSimpleMode,
@@ -292,7 +315,7 @@
   } = storeToRefs(globalStore);
 
   const displayName =
-    props[props.type].displayName || props[props.type]['display-name'];
+    props[props.type].displayName || props[props.type]['display-name'] || props[props.type].name;
 
   const name = props[props.type].name;
   const tag = props[props.type].tag;
@@ -304,13 +327,52 @@
       return "";
     }
   })
+  const shouldInlineRemarkInSecondLine = computed(() => {
+    return Boolean(
+      props.isDualColumn
+      && appearanceSetting.value.isSimpleMode
+      && remarkText.value
+      && appearanceSetting.value.isSimpleShowRemark
+    );
+  });
+  const isDualNonSimpleMode = computed(() => {
+    return Boolean(
+      props.isDualColumn
+      && !appearanceSetting.value.isSimpleMode,
+    );
+  });
   const { flows } = storeToRefs(subsStore);
   const icon = computed(() => {
-    if (props.file.type === 'mihomoProfile') return clashmetaIcon;
+    if (isMihomoConfigFileType(props.file.type)) return clashmetaIcon;
     return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon;
   })
+  const avatarSize = computed(() => {
+    if (appearanceSetting.value.isSimpleMode) return '36';
+    return props.isDualColumn ? '40' : '48';
+  });
+  const itemPadding = computed(() => {
+    if (appearanceSetting.value.isSimpleMode) return '9px';
+    return props.isDualColumn ? '12px' : '16px';
+  });
+  const imageMarginTop = computed(() => {
+    if (appearanceSetting.value.isSimpleMode) return '5px';
+    return props.isDualColumn ? '2px' : '0';
+  });
+  const titleActionTop = computed(() => {
+    if (appearanceSetting.value.isSimpleMode) return '8px';
+    return props.isDualColumn ? '2px' : '0';
+  });
+  const githubUrlRewriter = computed(() => {
+    return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+  });
+  const rewriteGithubUrl = (url?: string | null) => {
+    return githubUrlRewriter.value(url);
+  };
   const isIconColor = computed(() => {
     return props.file.isIconColor !== false;
+  });
+  const iconFit = computed(() => {
+    return resolveImageFit(props.file.iconFit, appearanceSetting.value.iconFit);
   });
 
   const collectionDetail = computed(() => {
@@ -320,7 +382,7 @@
     } else {
       const displayNameList = nameList.map(name => {
         const sub = subsStore.getOneSub(name);
-        return sub?.displayName || sub?.['display-name'] || sub.name;
+        return sub?.displayName || sub?.['display-name'] || sub.name || `${name}(🚫)`;
       });
       return `${t('subPage.collectionItem.contain')}：${displayNameList.join(
         '、'
@@ -329,9 +391,19 @@
   });
 
   const flow = computed(() => {
-    if (props.file.type === 'mihomoProfile') return t('filePage.type.mihomoProfile');
+    if (isMihomoConfigFileType(props.file.type)) return t('filePage.type.mihomoConfig');
     if (props.file.source === 'remote') return t('filePage.source.remote');
     return t('filePage.source.local');
+  });
+  const simpleDetailLine = computed(() => {
+    if (!shouldInlineRemarkInSecondLine.value) {
+      return flow.value;
+    }
+
+    return [flow.value, remarkText.value].filter(Boolean).join(" · ");
+  });
+  const nonSimpleSecondLine = computed(() => {
+    return remarkText.value;
   });
 
   const closePreview = () => {
@@ -352,34 +424,53 @@
     router.back();
   };
 
-  const previewFile = async () => {
+  const doPreview = async (fileData: any) => {
     Toast.loading('生成中...', { id: 'compare', cover: true, duration: 1500 });
-    const res = await useSubsApi().compareSub(
-      'file',
-      props.file
-    );
-
-    if (res?.data?.status === 'success') {
-      previewData.value = res.data.data;
-
-      scrollTop = document.documentElement.scrollTop || document.body.scrollTop
-
-      globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop })
-
-      document.querySelector('html').style['overflow-y'] = 'hidden';
-      document.querySelector('html').style.height = '100%';
-      document.body.style.height = '100%';
-      document.body.style['overflow-y'] = 'hidden';
-      (document.querySelector('#app') as HTMLElement).style['overflow-y'] = 'hidden';
-      (document.querySelector('#app') as HTMLElement).style.height = '100%';
-
-      filePreviewIsVisible.value = true;
-      Toast.hide('compare');
+    try {
+      const res = await subsApi.compareSub('file', fileData);
+      if (res?.data?.status === 'success') {
+        previewData.value = res.data.data;
+      } else {
+        previewData.value = { processed: formatPreviewError(res) };
+      }
+    } catch (e) {
+      console.error(e);
+      previewData.value = { processed: formatPreviewError(e) };
     }
+    Toast.hide('compare');
   };
 
-  const swipeClose = () => {
-    swipe.value.close();
+  const openPreviewPanel = () => {
+    scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+    globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop });
+
+    document.querySelector('html').style['overflow-y'] = 'hidden';
+    document.querySelector('html').style.height = '100%';
+    document.body.style.height = '100%';
+    document.body.style['overflow-y'] = 'hidden';
+    (document.querySelector('#app') as HTMLElement).style['overflow-y'] = 'hidden';
+    (document.querySelector('#app') as HTMLElement).style.height = '100%';
+
+    filePreviewIsVisible.value = true;
+  };
+
+  const previewFile = async () => {
+    await doPreview(props.file);
+    openPreviewPanel();
+  };
+
+  const refreshPreview = async () => {
+    try {
+      const fileRes = await filesApi.getWholeFile(name);
+      const latestFile = (fileRes?.data?.status === 'success' ? fileRes.data.data : null) ?? props.file;
+      await doPreview(latestFile);
+      // 同步更新 store，使进入编辑器时数据一致
+      subsStore.setOneData('files', name, latestFile);
+    } catch (e) {
+      console.error(e);
+      previewData.value = { processed: formatPreviewError(e) };
+      Toast.hide('compare');
+    }
   };
 
   const swipeController = () => {
@@ -469,9 +560,16 @@
     }
   };
 
-  const onDeleteConfirm = async () => {
-    await subsStore.deleteFile(name);
+  const onDeleteConfirm = async (mode: DeleteMode = 'permanent') => {
+    await subsStore.deleteFile(name, mode);
     // Notify.danger(t('subPage.deleteSub.succeedNotify'), { duration: 1500 });
+  };
+
+  const closeExpandedMenu = () => {
+    swipe.value.close();
+    swipeIsOpen.value = false;
+    if (moreAction.value) moreAction.value.style.transform = 'rotate(0deg)';
+    document.removeEventListener('click', handleGlobalClick);
   };
 
 
@@ -484,6 +582,7 @@
     await subsStore.fetchSubsData();
     Toast.hide('copyConfig');
     showNotify({ title: t('subPage.copyConfigNotify.succeed') });
+    closeExpandedMenu();
   };
 
   const onClickEdit = () => {
@@ -491,21 +590,18 @@
   };
 
   const onClickDelete = () => {
-    Dialog({
-      title: t('subPage.deleteSub.title'),
-      content: createVNode(
-        'span',
-        {},
-        t('subPage.deleteSub.desc', { displayName })
-      ),
-      onCancel: () => {},
-      onOk: onDeleteConfirm,
-      onOpened: () => {},
-      popClass: 'auto-dialog',
-      cancelText: t('subPage.deleteSub.btn.cancel'),
-      okText: t('subPage.deleteSub.btn.confirm'),
-      closeOnPopstate: true,
-      lockScroll: false,
+    openManagedDeleteDialog({
+      enabled: isArchiveEnabled.value,
+      managedTitle: t('archivePage.liveDelete.title'),
+      managedContent: t('archivePage.liveDelete.desc', { displayName }),
+      managedCancelText: t('archivePage.liveDelete.btn.archive'),
+      managedOkText: t('archivePage.liveDelete.btn.permanent'),
+      legacyTitle: t('subPage.deleteSub.title'),
+      legacyContent: t('subPage.deleteSub.desc', { displayName }),
+      legacyCancelText: t('subPage.deleteSub.btn.cancel'),
+      legacyOkText: t('subPage.deleteSub.btn.confirm'),
+      onArchive: () => onDeleteConfirm('archive'),
+      onPermanent: () => onDeleteConfirm('permanent'),
     });
   };
 
@@ -517,10 +613,26 @@
     return env.value?.feature?.share;
   });
 
-  const onClickExportFile = (name) => {
-    const url = `${host.value}/api/wholeFile/${encodeURIComponent(name)}?raw=1`;
-    console.log('url', url);
-    window.open(url, '_blank');  // 在新窗口中打开链接
+  const onClickExportFile = async (name: string) => {
+    Toast.loading(t('subPage.exportConfigNotify.loading'), { id: 'exportConfig' });
+    try {
+      downloadBlobResponse(
+        await filesApi.exportFile(name),
+        `sub-store_file_${name}.json`,
+      );
+      showNotify({ title: t('subPage.exportConfigNotify.succeed') });
+    } catch (e) {
+      console.error(e);
+      showNotify({
+        type: 'danger',
+        title: t('subPage.exportConfigNotify.failed', {
+          e: e instanceof Error ? e.message : e,
+        }),
+      });
+    } finally {
+      Toast.hide('exportConfig');
+      closeExpandedMenu();
+    }
   };
 
   const onClickShareLink = async () => {
@@ -560,8 +672,11 @@
     margin-right: auto;
     border-radius: var(--item-card-radios);
     display: flex;
+    min-width: 0;
     background: var(--card-color);
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
 
     :deep(.nut-avatar) {
       flex-shrink: 0;
@@ -571,41 +686,60 @@
       border-radius: 12px;
 
       img {
-        object-fit: contain;
+        object-fit: var(--icon-fit, cover);
         border-radius: 10px;
       }
     }
 
     > .sub-item-content {
       flex: 1;
+      min-width: 0;
       line-height: 1.6;
+      display: flex;
+      flex-direction: column;
 
       .sub-item-title-wrapper {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 2px;
 
         .sub-item-title {
-          display: -webkit-box;
-          -webkit-box-orient: vertical;
-          -webkit-line-clamp: 1;
-          word-wrap: break-word;
-          word-break: break-all;
+          flex: 1 1 auto;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          white-space: nowrap;
           overflow: hidden;
           font-size: 16px;
           color: var(--primary-text-color);
           vertical-align: middle;
         }
+        .sub-item-name {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
         .tag {
-          margin: 0 2px;
+          display: inline-flex;
+          flex: 0 0 auto;
+          margin: 0 1px;
+
+          :deep(.nut-tag) {
+            padding: 2px 3px;
+            font-size: 11px;
+            line-height: 1.2;
+          }
         }
         .compare-sub-link,
-        .share-sub-link,
+        .public-link-action,
         .copy-sub-link,
         .refresh-sub-flow {
           background-color: transparent;
           border: none;
-          padding: 0 8px;
+          padding: 0 6px;
           cursor: pointer;
           display: inline-flex;
           justify-content: center;
@@ -621,11 +755,13 @@
         button {
           white-space: nowrap;
         }
+      }
 
-        div {
-          display: flex;
-          align-items: center;
-        }
+      .sub-item-actions {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
       }
 
       .sub-item-detail {
@@ -676,7 +812,51 @@
     }
   }
 
+  .sub-item-swipe.is-dual-column {
+    .sub-item-wrapper {
+      :deep(.nut-avatar) {
+        margin-right: 12px;
+      }
+
+      > .sub-item-content {
+        .sub-item-title-wrapper {
+          align-items: flex-start;
+          gap: 6px;
+        }
+
+        .sub-item-title {
+          font-size: 15px;
+        }
+
+        .compare-sub-link,
+        .public-link-action,
+        .copy-sub-link,
+        .refresh-sub-flow {
+          padding: 0 6px;
+        }
+
+        .sub-item-detail {
+          -webkit-line-clamp: 1;
+        }
+
+        .sub-item-remark {
+          -webkit-line-clamp: 1;
+        }
+
+        .dual-non-simple-second-line {
+          min-height: 18px;
+        }
+
+        .sub-item-detail-isSimple {
+          max-width: 100%;
+        }
+      }
+    }
+  }
+
   .sub-item-swipe {
+    display: block;
+    min-width: 0;
     :deep(.nut-swipe__left) {
       .sub-item-swipe-btn-wrapper {
         padding-left: 24px;

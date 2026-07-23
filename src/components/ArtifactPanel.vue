@@ -23,7 +23,7 @@
           v-model.trim="editPanelData.icon"
           type="text"
           left-icon="shop"
-          @click-left-icon="iconTips"
+          @click-left-icon="showIconPopup"
         />
       </nut-form-item>
       <nut-form-item
@@ -35,6 +35,7 @@
           <nut-switch v-model="isIconColor" />
         </div>
       </nut-form-item>
+      <ImageFitPicker v-model="editPanelData.iconFit" :fallback-value="appearanceSetting.iconFit" />
       <nut-form-item
         :label="$t(`syncPage.addArtForm.name.label`)"
         prop="name"
@@ -112,13 +113,17 @@
         </Teleport>
       </nut-form-item>
       <template v-if="sourceInput && ['subscription', 'collection'].includes(editPanelData.type)">
-        <div class="include-unsupported-proxy-wrapper">
-          <div class="label" @click="includeUnsupportedProxyTips">
-            <p>{{ $t(`syncPage.addArtForm.includeUnsupportedProxy.label`) }}</p>
-            <nut-icon name="tips"></nut-icon>
+        <nut-form-item class="include-unsupported-proxy-wrapper">
+          <template #label>
+            <div class="label" @click="includeUnsupportedProxyTips">
+              <p>{{ $t(`syncPage.addArtForm.includeUnsupportedProxy.label`) }}</p>
+              <nut-icon name="tips"></nut-icon>
+            </div>
+          </template>
+          <div class="switch-wrapper">
+            <nut-switch v-model="editPanelData.includeUnsupportedProxy"/>
           </div>
-          <nut-switch v-model="editPanelData.includeUnsupportedProxy"/>
-        </div>
+        </nut-form-item>
 
         <nut-form-item :label="$t(`syncPage.addArtForm.platform.label`)">
           <nut-radiogroup
@@ -128,10 +133,10 @@
           >
             <nut-radio label="Stash">Stash</nut-radio>
             <nut-radio label="Egern">Egern</nut-radio>
-            <nut-radio label="ClashMeta">Mihomo</nut-radio>
+            <nut-radio label="ClashMeta">mihomo</nut-radio>
             <nut-radio label="Surfboard">Surfboard</nut-radio>
             <nut-radio label="Surge">Surge</nut-radio>
-            <nut-radio label="SurgeMac">Surge(macOS) <a href="https://github.com/sub-store-org/Sub-Store/wiki/%E9%93%BE%E6%8E%A5%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E" target="_blank">ⓘ</a></nut-radio>
+            <nut-radio label="SurgeMac">Surge Mac <a href="https://github.com/sub-store-org/Sub-Store/wiki/%E9%93%BE%E6%8E%A5%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E" target="_blank">ⓘ</a></nut-radio>
             <nut-radio label="Loon">Loon</nut-radio>
             <nut-radio label="ShadowRocket">Shadowrocket</nut-radio>
             <nut-radio label="QX">Quantumult X<span name="tips" @click="qxTips">&nbsp;ⓘ</span></nut-radio>
@@ -145,18 +150,28 @@
       </template>
     </nut-form>
   </nut-dialog>
+  <icon-popup
+    v-if="iconPopupVisible"
+    v-model:visible="iconPopupVisible"
+    @setIcon="setIcon"
+  />
 </template>
 
 <script lang="ts" setup>
-  import { useRouter } from "vue-router";
   import { useArtifactsStore } from '@/store/artifacts';
+  import { useSettingsStore } from '@/store/settings';
   import { useSubsStore } from '@/store/subs';
+  import ImageFitPicker from '@/components/ImageFitPicker.vue';
+  import IconPopup from '@/views/icon/IconPopup.vue';
+  import { normalizeOptionalImageFit } from '@/utils/iconFit';
   import { Dialog, Toast } from '@nutui/nutui';
+  import { storeToRefs } from 'pinia';
   import { computed, ref, toRaw, watchEffect } from 'vue';
   import { useI18n } from 'vue-i18n';
-  const router = useRouter();
   const { t } = useI18n();
   const artifactsStore = useArtifactsStore();
+  const settingsStore = useSettingsStore();
+  const { appearanceSetting } = storeToRefs(settingsStore);
   const isInit = ref(false);
   const isEditMode = ref(false);
   const ruleForm = ref();
@@ -184,6 +199,7 @@
     displayName: '',
     icon: '',
     isIconColor: true,
+    iconFit: undefined,
     source: '',
     type: 'file',
     platform: 'Stash',
@@ -195,6 +211,7 @@
       editPanelData.value.isIconColor = value;
     },
   });
+  const iconPopupVisible = ref(false);
   const sourceSelectorIsVisible = ref(false);
   const sourceOptions = computed(() => {
     const subsNameList = useSubsStore().subs.map(sub => {
@@ -294,17 +311,28 @@
         return;
       }
 
-      const data = toRaw(editPanelData.value);
+      const data = { ...toRaw(editPanelData.value) };
+      const iconFit = normalizeOptionalImageFit(editPanelData.value.iconFit);
+      if (iconFit) {
+        data.iconFit = iconFit;
+      } else if (isEditMode.value) {
+        data.iconFit = null;
+      } else {
+        delete data.iconFit;
+      }
       Toast.loading(t('syncPage.addArtForm.submitLoading'), {
         cover: true,
         id: 'add-artifact-loading',
       });
+      let isSuccess = false;
       if (isEditMode.value) {
-        await artifactsStore.editArtifact(name, data);
+        isSuccess = await artifactsStore.editArtifact(name, data);
       } else {
-        await artifactsStore.createArtifact(data);
+        isSuccess = await artifactsStore.createArtifact(data);
       }
-      closePanel();
+      if (isSuccess) {
+        closePanel();
+      }
       Toast.hide('add-artifact-loading');
     });
   };
@@ -332,6 +360,14 @@
     ruleForm.value.validate(prop);
   };
 
+  const showIconPopup = () => {
+    iconPopupVisible.value = true;
+  };
+
+  const setIcon = (icon: any) => {
+    editPanelData.value.icon = icon.url;
+  };
+
   const includeUnsupportedProxyTips = () => {
     window.open('https://github.com/sub-store-org/Sub-Store/wiki/%E9%93%BE%E6%8E%A5%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E');
     // const includeUnsupportedProxyTipsTitle = t(`syncPage.addArtForm.includeUnsupportedProxy.tips.title`)
@@ -346,13 +382,11 @@
     //   lockScroll: false,
     // });
   };
-  const iconTips = () => {
-    router.push(`/icon/collection`);
-  };
   watchEffect(() => {
     if (!isInit.value && name) {
       const artifact = artifactsStore.artifacts.find(art => art.name === name);
       editPanelData.value = JSON.parse(JSON.stringify(toRaw(artifact)));
+      editPanelData.value.iconFit = normalizeOptionalImageFit(editPanelData.value.iconFit);
       sourceModel.value.push(
         editPanelData.value.type,
         editPanelData.value.source
@@ -374,24 +408,33 @@
     min-width: 350px;
     .include-unsupported-proxy-wrapper {
       flex-direction: row;
-      display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 14px;
-      padding: 0 8px 0 8px;
+
+      :deep(.nut-form-item__label) {
+        width: auto;
+      }
+
       .label {
         color: var(--comment-text-color);
-        display: flex;
-        justify-content: space-between;
+        display: inline-flex;
         align-items: center;
+        gap: 6px;
+
         p {
+          margin: 0;
           text-align: left;
-          padding-right: 20px;
         }
+
         .nut-icon {
           flex-shrink: 0;
-          margin-right: 6px;
         }
+      }
+
+      .switch-wrapper {
+        display: flex;
+        justify-content: flex-end;
       }
     }
     .nut-dialog {

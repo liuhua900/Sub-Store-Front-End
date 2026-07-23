@@ -1,9 +1,11 @@
 <template>
   <!-- <GlobalNotify /> -->
   <NavBar />
+  <SideBar v-show="shouldShowSideBar" />
   <main class="page-body">
     <router-view />
   </main>
+  <LogsOverlay />
   <MagicPathDialog
     v-model="showMagicPathDialog"
     :url-api-error="urlApiError"
@@ -14,22 +16,28 @@
 
 <script setup lang="ts">
 // import GlobalNotify from '@/components/GlobalNotify.vue';
+import SideBar from "@/components/SideBar.vue";
 import NavBar from "@/components/NavBar.vue";
 import MagicPathDialog from "@/components/MagicPathDialog.vue";
+import LogsOverlay from "@/components/LogsOverlay.vue";
+import { useWideScreenNarrowMode } from "@/hooks/useWideScreenNarrowMode";
 import { useThemes } from "@/hooks/useThemes";
 import { useGlobalStore } from "@/store/global";
 import { useSubsStore } from "@/store/subs";
 import { getFlowsUrlList } from "@/utils/getFlowsUrlList";
 import { initStores } from "@/utils/initApp";
 import { storeToRefs } from "pinia";
-import { ref, watchEffect, onMounted } from "vue";
+import { ref, watchEffect, onMounted, computed } from "vue";
 import { useHostAPI } from "@/hooks/useHostAPI"; //onMounted
 import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 
 const subsStore = useSubsStore();
 const globalStore = useGlobalStore();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
+const { shouldShowSideBar } = useWideScreenNarrowMode();
 
 const { subs, flows } = storeToRefs(subsStore);
 
@@ -66,7 +74,8 @@ globalStore.setBottomSafeArea(
 
 const { handleUrlQuery } = useHostAPI();
 const urlApiConfigSuccess = ref(false);
-const urlApiError = ref('');
+const urlApiErrorKey = ref('');
+const urlApiError = computed(() => urlApiErrorKey.value ? t(urlApiErrorKey.value) : '');
 const urlApiValue = ref('');
 
 const processUrlApiConfig = async () => {
@@ -96,54 +105,56 @@ const processUrlApiConfig = async () => {
     if (hasApiParam) {
       const apiValue = decodeURIComponent(hasApiParam[1]).replace(/\/$/, ''); // 去除末尾斜杠;
       urlApiValue.value = apiValue;
-      urlApiError.value = '通过 URL 参数指定的 API 地址连接失败，请检查地址是否正确';
+      urlApiErrorKey.value = 'magicPath.errors.urlApiConnection';
       hasUrlParams = true;
     } else if (hasMagicPathParam) {
       const magicPath = decodeURIComponent(hasMagicPathParam[1]);
       const currentHost = window.location.origin;
       const apiUrl = `${currentHost}/${magicPath.replace(/^\/+/, '')}`;
       urlApiValue.value = apiUrl;
-      urlApiError.value = '通过 URL 参数指定的 magicpath 连接失败，请检查路径是否正确';
+      urlApiErrorKey.value = 'magicPath.errors.urlMagicPathConnection';
       hasUrlParams = true;
     }
   }
 
   // 处理URL参数中的后端配置
   const result = await handleUrlQuery({
-    errorCb: async () => {
-      try {
-        // 检查用户是否跳过了当前连接检测周期
-        const skippedCycle = parseInt(sessionStorage.getItem('skippedConnectionCycle') || '0');
+    errorCb: hasUrlParams
+      ? async () => {
+        try {
+          // 检查用户是否跳过了当前连接检测周期
+          const skippedCycle = parseInt(sessionStorage.getItem('skippedConnectionCycle') || '0');
 
-        // 尝试初始化stores，获取后端环境信息
-        await initStores(true, true, false);
+          // 尝试初始化stores，获取后端环境信息
+          await initStores(true, true, false);
 
-        // 检查是否有环境信息
-        const hasBackendEnv = Object.keys(globalStore.env).length > 0 && globalStore.env.backend;
+          // 检查是否有环境信息
+          const hasBackendEnv = Object.keys(globalStore.env).length > 0 && globalStore.env.backend;
 
-        if (hasBackendEnv) {
-          showMagicPathDialog.value = false;
-          localStorage.setItem('backendConfigured', 'true');
-          globalStore.setFetchResult(true);
-        } else {
+          if (hasBackendEnv) {
+            showMagicPathDialog.value = false;
+            localStorage.setItem('backendConfigured', 'true');
+            globalStore.setFetchResult(true);
+          } else {
+            globalStore.setFetchResult(false);
+
+            if (route.path === '/subs' && skippedCycle !== connectionCheckCycle.value) {
+              showMagicPathDialog.value = true;
+            }
+          }
+        } catch (e) {
+          console.error('Error initializing stores:', e);
           globalStore.setFetchResult(false);
+
+          // 检查用户是否跳过了当前连接检测周期
+          const skippedCycle = parseInt(sessionStorage.getItem('skippedConnectionCycle') || '0');
 
           if (route.path === '/subs' && skippedCycle !== connectionCheckCycle.value) {
             showMagicPathDialog.value = true;
           }
         }
-      } catch (e) {
-        console.error('Error initializing stores:', e);
-        globalStore.setFetchResult(false);
-
-        // 检查用户是否跳过了当前连接检测周期
-        const skippedCycle = parseInt(sessionStorage.getItem('skippedConnectionCycle') || '0');
-
-        if (route.path === '/subs' && skippedCycle !== connectionCheckCycle.value) {
-          showMagicPathDialog.value = true;
-        }
       }
-    },
+      : undefined,
   });
 
   if (result) {
@@ -158,7 +169,7 @@ const processUrlApiConfig = async () => {
 
     if (fetchResult) {
       // 连接成功，清除错误信息并隐藏弹窗
-      urlApiError.value = '';
+      urlApiErrorKey.value = '';
       showMagicPathDialog.value = false;
     } else if (hasUrlParams && skippedCycle !== connectionCheckCycle.value) {
       // 连接失败但已添加到后端列表，显示错误信息
@@ -228,9 +239,11 @@ useThemes();
 
 // 设置流量刷新状态
 watchEffect(() => {
-  allLength.value = getFlowsUrlList(subs.value).length;
-  const currentLength = Object.keys(flows.value).length;
-  globalStore.setFlowFetching(allLength.value !== currentLength);
+  const flowKeys = getFlowsUrlList(subs.value).map(([url]) => url);
+  allLength.value = flowKeys.length;
+  globalStore.setFlowFetching(
+    flowKeys.some(url => !(url in flows.value)),
+  );
 });
 
 watchEffect(() => {

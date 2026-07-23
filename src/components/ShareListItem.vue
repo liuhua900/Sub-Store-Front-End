@@ -1,171 +1,174 @@
 <template>
-  <!-- 滚动内容 -->
-  <nut-swipe
-    ref="swipe"
-    class="sub-item-swipe"
-    :disabled="props.disabled"
-    @close="setIsMoveClose()"
-    @open="setIsMoveOpen()"
-    @click="onClickPreviews()"
+  <div
+    class="sub-item-wrapper"
+    :class="{ disabled: props.disabled, 'is-dual-column': props.isDualColumn }"
+    :style="{ padding: itemPadding, '--icon-fit': shareIconFit }"
+    data-testid="link-card"
+    @click="onClickPreviews"
   >
     <div
-      class="sub-item-wrapper"
-      :style="{ padding: appearanceSetting.isSimpleMode ? '9px' : '16px' }"
+      class="sub-img-wrappers"
+      :style="{ 'margin-top': imageMarginTop }"
+      @click.stop="onClickEdit"
     >
-      <div
-        class="sub-img-wrappers"
-        :style="{ 'margin-top': appearanceSetting.isSimpleMode ? '5px' : '0' }"
-        @click.stop="onClickEdit"
-      >
-        <div v-if="appearanceSetting.isShowIcon">
-          <div v-if="isIconColor">
-            <nut-avatar
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="shareIcon"
-              bg-color=""
-            />
-          </div>
-          <div v-else>
-            <nut-avatar
-              class="sub-item-customer-icon"
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="shareIcon"
-              bg-color=""
-            />
-          </div>
+      <div v-if="appearanceSetting.isShowIcon">
+        <div v-if="isIconColor">
+          <nut-avatar
+            :size="avatarSize"
+            :url="shareIcon"
+            bg-color=""
+          />
         </div>
-      </div>
-      <div class="sub-item-content">
-        <div class="sub-item-title-wrapper">
-          <!-- 分享订阅、文件名 -->
-          <h3 v-if="!appearanceSetting.isSimpleMode" class="sub-item-title">
-            {{ displayName || name }}
-            <span class="tag">
-              <nut-tag>{{ leftTime }}</nut-tag>
-            </span>
-          </h3>
-          <h3
-            v-else
-            class="sub-item-title"
-            style="color: var(--primary-text-color); font-size: 16px"
-          >
-            {{ displayName || name }}
-            <span class="tag">
-              <nut-tag>{{ leftTime }}</nut-tag>
-            </span>
-          </h3>
-
-          <!-- 快捷操作按钮 -->
-          <div
-            style="position: relative"
-            :style="{ top: appearanceSetting.isSimpleMode ? '8px' : '0' }"
-          >
-            <!-- 查看 -->
-            <button class="copy-sub-link" @click.stop="onClickShareLink">
-              <font-awesome-icon icon="fa-solid fa-link" />
-            </button>
-            <button class="copy-sub-link" @click.stop="onClickCopyLink">
-              <font-awesome-icon icon="fa-solid fa-clone" />
-            </button>
-            <!-- 编辑 -->
-            <button class="refresh-sub-flow" @click.stop="onClickEdit">
-              <font-awesome-icon icon="fa-solid fa-pen-nib" />
-            </button>
-
-            <button
-              v-if="!isMobile()"
-              ref="moreAction"
-              class="copy-sub-link"
-              @click.stop="swipeController"
-            >
-              <font-awesome-icon icon="fa-solid fa-angles-right" />
-            </button>
-          </div>
+        <div v-else>
+          <nut-avatar
+            class="sub-item-customer-icon"
+            :size="avatarSize"
+            :url="shareIcon"
+            bg-color=""
+          />
         </div>
-        <p v-if="!appearanceSetting.isSimpleMode" class="sub-item-remark">
-          <span>{{ t(`sharePage.createTimeLabel`) }}{{ createTime }}</span>
-        </p>
-        <p class="sub-item-remark">
-          <span>{{ t(`sharePage.expiredLabel`) }}{{ expiresTime }}</span>
-        </p>
-
-        <!-- 分享备注 -->
-        <p v-if="remark && (appearanceSetting.isSimpleMode ? appearanceSetting.isSimpleShowRemark : true)" class="sub-item-remark">
-          <span>{{ remark }}</span>
-        </p>
       </div>
     </div>
-    <!-- 加入判断 开启拖动不显示 -->
-    <template v-if="appearanceSetting.isLeftRight" #left>
-      <!-- del -->
-      <div class="sub-item-swipe-btn-wrapper">
-        <nut-button
-          shape="square"
-          type="danger"
-          class="sub-item-swipe-btn"
-          @click="onClickDelete"
+    <div class="sub-item-content">
+      <div class="sub-item-title-wrapper">
+        <h3
+          v-if="!appearanceSetting.isSimpleMode"
+          class="sub-item-title"
+          :title="displayName || name"
         >
-          <font-awesome-icon icon="fa-solid fa-trash-can" />
-        </nut-button>
-      </div>
-    </template>
+          <span class="sub-item-name">{{ displayName || name }}</span>
+          <span v-for="item in shareTags" :key="item" class="tag">
+            <nut-tag>{{ item }}</nut-tag>
+          </span>
+        </h3>
+        <h3
+          v-else
+          class="sub-item-title"
+          style="color: var(--primary-text-color); font-size: 16px"
+          :title="displayName || name"
+        >
+          <span class="sub-item-name">{{ displayName || name }}</span>
+          <span v-for="item in shareTags" :key="item" class="tag">
+            <nut-tag>{{ item }}</nut-tag>
+          </span>
+        </h3>
 
-    <template v-else #right>
-      <div class="sub-item-swipe-btn-wrapper">
-        <nut-button
-          shape="square"
-          type="danger"
-          class="sub-item-swipe-btn"
-          @click="onClickDelete"
+        <div
+          class="link-item-actions"
+          :style="{ top: appearanceSetting.isSimpleMode ? '8px' : '0' }"
         >
-          <font-awesome-icon icon="fa-solid fa-trash-can" />
-        </nut-button>
+          <button
+            class="copy-sub-link"
+            :disabled="props.disabled"
+            @click.stop="onClickShareLink"
+          >
+            <font-awesome-icon icon="fa-solid fa-link" />
+          </button>
+          <button
+            class="copy-sub-link"
+            :disabled="props.disabled"
+            @click.stop="onClickCopyLink"
+          >
+            <font-awesome-icon icon="fa-solid fa-clone" />
+          </button>
+          <button
+            class="refresh-sub-flow"
+            :disabled="props.disabled"
+            @click.stop="onClickEdit"
+          >
+            <font-awesome-icon icon="fa-solid fa-pen-nib" />
+          </button>
+          <button
+            class="public-link-action"
+            data-testid="link-delete-button"
+            :aria-label="t('sharePage.selectMode.delete')"
+            :title="t('sharePage.selectMode.delete')"
+            :disabled="props.disabled"
+            @click.stop="onClickDelete"
+          >
+            <font-awesome-icon icon="fa-solid fa-trash-can" />
+          </button>
+        </div>
       </div>
-    </template>
-  </nut-swipe>
+      <p v-if="!appearanceSetting.isSimpleMode" class="sub-item-remark">
+        <span>{{ t(`sharePage.createTimeLabel`) }}{{ createTime }}</span>
+      </p>
+      <p class="sub-item-remark">
+        <span>{{ appearanceSetting.isSimpleMode ? detailLine : nonSimpleSecondLine }}</span>
+      </p>
+
+      <p
+        v-if="remark && (
+          appearanceSetting.isSimpleMode
+            ? appearanceSetting.isSimpleShowRemark && !shouldInlineRemarkInSecondLine
+            : !isDualNonSimpleMode
+        )"
+        class="sub-item-remark"
+      >
+        <span>{{ remark }}</span>
+      </p>
+    </div>
+  </div>
 </template>
 
 <script lang="ts" setup>
 import { useClipboard } from "@vueuse/core";
-import useV3Clipboard from "vue-clipboard3";
 import { Dialog, Toast } from "@nutui/nutui";
 import dayjs from "dayjs";
 import { storeToRefs } from "pinia";
-import { computed, createVNode, ref } from "vue";
+import { computed, createVNode } from "vue";
 import { useI18n } from "vue-i18n";
+import useV3Clipboard from "vue-clipboard3";
+import { useRouter } from "vue-router";
 import logoIcon from "@/assets/icons/logo.png";
 import logoRedIcon from "@/assets/icons/logo-red.png";
 import PreviewPanel from "@/components/PreviewPanel.vue";
 import { useBackend } from "@/hooks/useBackend";
 import { useHostAPI } from "@/hooks/useHostAPI";
-import { usePopupRoute } from "@/hooks/usePopupRoute";
+import { useAppNotifyStore } from "@/store/appNotify";
 import { useSettingsStore } from "@/store/settings";
 import { useSubsStore } from "@/store/subs";
-import { isMobile } from "@/utils/isMobile";
-import { useRouter } from "vue-router";
-import { useAppNotifyStore } from "@/store/appNotify";
+import { openManagedDeleteDialog } from "@/utils/archive";
+import { createGithubProxyUrlRewriter } from "@/utils/githubProxy";
+import { resolveImageFit } from "@/utils/iconFit";
+import {
+  formatShareTimestamp,
+  getShareEditPath,
+  getSharePublicUrl,
+  resolveShareDisplayIconState,
+} from "@/utils/share";
+import { normalizeTagArray } from "@/utils/shareTags";
 
 const { showNotify } = useAppNotifyStore();
 const router = useRouter();
 const props = defineProps<{
   data: Share;
   disabled?: boolean;
+  isDualColumn?: boolean;
 }>();
-const emit = defineEmits(["detail", "delete"]);
 const { copy, isSupported } = useClipboard();
 const { toClipboard: copyFallback } = useV3Clipboard();
 const { t } = useI18n();
 const { env } = useBackend();
-const scrollTop = 0;
-const filePreviewIsVisible = ref(false);
-usePopupRoute(filePreviewIsVisible);
-const moreAction = ref();
-const swipe = ref();
-const swipeIsOpen = ref(false);
+const isArchiveEnabled = computed(() => {
+  return env.value?.feature?.archive;
+});
 const settingsStore = useSettingsStore();
 const subsStore = useSubsStore();
-const { appearanceSetting } = storeToRefs(settingsStore);
-const { currentUrl: host } = useHostAPI();
+const { appearanceSetting, githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
+const { currentUrl: host, currentShareBaseUrl } = useHostAPI();
+const avatarSize = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "36";
+  return props.isDualColumn ? "40" : "48";
+});
+const itemPadding = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "9px";
+  return props.isDualColumn ? "12px" : "16px";
+});
+const imageMarginTop = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "5px";
+  return props.isDualColumn ? "2px" : "0";
+});
 
 const name = computed(() => {
   return props?.data?.name;
@@ -177,83 +180,118 @@ const displayName = computed(() => {
 const remark = computed(() => {
   return props?.data?.remark;
 });
+const shouldInlineRemarkInSecondLine = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && appearanceSetting.value.isSimpleMode
+    && remark.value
+    && appearanceSetting.value.isSimpleShowRemark
+  );
+});
+const isDualNonSimpleMode = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && !appearanceSetting.value.isSimpleMode,
+  );
+});
 const type = computed(() => {
   return props?.data?.type;
 });
 const token = computed(() => {
   return props?.data?.token;
 });
-const expiresTime = computed(() => {
-  return props?.data?.exp ? dayjs(props?.data?.exp).format("YYYY-MM-DD") : "";
+const shareTags = computed(() => {
+  return normalizeTagArray(props?.data?.tag);
 });
-const createTime = computed(() =>{
-  return props?.data?.createdAt
-    ? dayjs(props?.data?.createdAt).format("YYYY-MM-DD")
-    : "";
-})
-// 判断是否过期
+const expiresTime = computed(() => {
+  return formatShareTimestamp(props?.data?.exp);
+});
+const createTime = computed(() => {
+  return formatShareTimestamp(props?.data?.createdAt);
+});
 const leftTime = computed(() => {
+  if (props?.data?.mode === "count") {
+    const count = Number(props?.data?.count);
+    const usedCount = props?.data?.usedCount == null ? 0 : Number(props?.data?.usedCount);
+    return Number.isSafeInteger(count)
+      && count > 0
+      && Number.isSafeInteger(usedCount)
+      && usedCount >= 0
+      ? `${t("sharePage.countUsage")} ${Math.min(usedCount, count)}/${count}`
+      : t("sharePage.expired");
+  }
+
   return props?.data?.exp
     ? dayjs(props?.data?.exp).diff(dayjs(), "second") > 0
       ? `${t("sharePage.leftTime")} ${dayjs(props?.data?.exp).diff(dayjs(), "day", true).toFixed(0)} ${t("sharePage.createShare.unit.day")}`
       : t("sharePage.expired")
     : 0;
 });
+const detailLine = computed(() => {
+  const baseLine = `${expiresTime.value}${expiresTime.value ? " · " : ""}${leftTime.value}`;
+
+  if (!shouldInlineRemarkInSecondLine.value) {
+    return baseLine;
+  }
+
+  return [baseLine, remark.value].filter(Boolean).join(" · ");
+});
+const nonSimpleSecondLine = computed(() => {
+  const baseLine = `${expiresTime.value}${expiresTime.value ? " · " : ""}${leftTime.value}`;
+  return isDualNonSimpleMode.value
+    ? [baseLine, remark.value].filter(Boolean).join(" · ")
+    : baseLine;
+});
 
 const icon = computed(() => {
   return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon;
 });
-
-const shareIcon = computed(() => {
+const githubUrlRewriter = computed(() => {
+  return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+});
+const sourceItem = computed(() => {
   switch (type.value) {
     case "sub":
-      return subsStore.getOneSub(name.value)?.icon || icon.value;
+      return subsStore.getOneSub(name.value) || null;
     case "col":
-      return subsStore.getOneCollection(name.value)?.icon || icon.value;
+      return subsStore.getOneCollection(name.value) || null;
     case "file":
-      return subsStore.getOneFile(name.value)?.icon || icon.value;
+      return subsStore.getOneFile(name.value) || null;
     default:
-      return icon.value;
+      return null;
   }
+});
+const shareIconState = computed(() => {
+  return resolveShareDisplayIconState({
+    share: props.data,
+    source: sourceItem.value,
+    fallbackIcon: icon.value,
+  });
+});
+
+const shareIcon = computed(() => {
+  return githubUrlRewriter.value(shareIconState.value.icon) || shareIconState.value.icon;
 });
 
 const isIconColor = computed(() => {
-  switch (type.value) {
-    case "sub":
-      return subsStore.getOneSub(name.value)?.isIconColor !== false;
-    case "col":
-      return subsStore.getOneCollection(name.value)?.isIconColor !== false;
-    case "file":
-      return subsStore.getOneFile(name.value)?.isIconColor !== false;
-    default:
-      return true;
-  }
-})
+  return shareIconState.value.isIconColor;
+});
+const shareIconFit = computed(() => {
+  return resolveImageFit(shareIconState.value.iconFit, appearanceSetting.value.iconFit);
+});
 
-const swipeController = () => {
-  if (swipeIsOpen.value) {
-    swipe.value.close();
-    swipeIsOpen.value = false;
-    if (moreAction.value) moreAction.value.style.transform = "rotate(0deg)";
-  } else {
-    if (appearanceSetting.value.isLeftRight) {
-      swipe.value.open("right");
-    } else {
-      swipe.value.open("left");
-      swipeIsOpen.value = true;
-      if (moreAction.value) moreAction.value.style.transform = "rotate(180deg)";
-    }
-  }
-};
-
-const onDeleteConfirm = async () => {
-  await subsStore.deleteShare(token.value, type.value, name.value);
+const onDeleteConfirm = async (mode: DeleteMode = "permanent") => {
+  await subsStore.deleteShare(token.value, type.value, name.value, mode);
 };
 
 const onClickEdit = () => {
-  console.log("props", props);
-  console.log('${host.value}', host.value);
-  emit("detail", props.data);
+  if (props.disabled) {
+    return;
+  }
+  if (!type.value || !name.value || !token.value) {
+    return;
+  }
+  router.push(getShareEditPath(type.value, name.value, token.value));
 };
 
 const getOneShareOrigin = async (keyName: string) => {
@@ -268,8 +306,10 @@ const getOneShareOrigin = async (keyName: string) => {
 };
 
 const onClickCopyLink = async () => {
+  if (props.disabled) {
+    return;
+  }
   const url = getShareUrl();
-  console.log('url', url);
   if (isSupported) {
     await copy(url);
   } else {
@@ -279,6 +319,9 @@ const onClickCopyLink = async () => {
 };
 
 const onClickShareLink = async () => {
+  if (props.disabled) {
+    return;
+  }
   try {
     const keyName = encodeURIComponent(name.value);
     const item = await getOneShareOrigin(name.value);
@@ -300,42 +343,26 @@ const onClickShareLink = async () => {
 };
 
 const onClickDelete = () => {
-  swipeController();
-  Dialog({
-    title: t("sharePage.deleteShare.title"),
-    content: createVNode(
-      "span",
-      {},
-      t("sharePage.deleteShare.desc", { displayName: name.value }),
-    ),
-    onCancel: () => {},
-    onOk: onDeleteConfirm,
-    onOpened: () => swipe.value.close(),
-    popClass: "auto-dialog",
-    cancelText: t("sharePage.deleteShare.btn.cancel"),
-    okText: t("sharePage.deleteShare.btn.confirm"),
-    closeOnPopstate: true,
-    lockScroll: false,
+  if (props.disabled) {
+    return;
+  }
+  openManagedDeleteDialog({
+    enabled: isArchiveEnabled.value,
+    managedTitle: t("archivePage.liveDelete.title"),
+    managedContent: t("archivePage.liveDelete.desc", {
+      displayName: displayName.value || name.value,
+    }),
+    managedCancelText: t("archivePage.liveDelete.btn.archive"),
+    managedOkText: t("archivePage.liveDelete.btn.permanent"),
+    legacyTitle: t("sharePage.deleteShare.title"),
+    legacyContent: t("sharePage.deleteShare.desc", {
+      displayName: name.value,
+    }),
+    legacyCancelText: t("sharePage.deleteShare.btn.cancel"),
+    legacyOkText: t("sharePage.deleteShare.btn.confirm"),
+    onArchive: () => onDeleteConfirm("archive"),
+    onPermanent: () => onDeleteConfirm("permanent"),
   });
-};
-
-const ismove = ref(false);
-
-// 增加延迟防止打开时 触发不了
-const setTimeoutTF = () => {
-  setTimeout(() => {
-    ismove.value = false;
-  }, 200);
-};
-
-const setIsMoveOpen = () => {
-  ismove.value = true;
-  setTimeoutTF();
-};
-
-const setIsMoveClose = () => {
-  ismove.value = true;
-  setTimeoutTF();
 };
 
 const secretPath = computed(() => {
@@ -344,37 +371,29 @@ const secretPath = computed(() => {
 
 const getShareUrl = () => {
   try {
-    const { type, name, token } = props.data;
-    if (!secretPath.value.startsWith('/')) {
-      Toast.fail(t('sharePage.magicPathErrorNotify'));
-      throw new Error(
-        t("sharePage.magicPathErrorNotify"),
-      );
+    if (!props.data.type || !props.data.name || !props.data.token) {
+      return "";
     }
-    const shareUrl = `${host.value.replace(
-      new RegExp(`${secretPath.value}$`),
-      "",
-    )}/share/${type}/${encodeURIComponent(name)}?token=${encodeURIComponent(
-      token,
-    )}`;
-    return shareUrl;
+    return getSharePublicUrl({
+      host: host.value,
+      shareBaseUrl: currentShareBaseUrl.value,
+      secretPath: secretPath.value,
+      type: props.data.type,
+      name: props.data.name,
+      token: props.data.token,
+    });
   } catch (error) {
+    Toast.fail(t("sharePage.magicPathErrorNotify"));
     console.error(error);
     return "";
   }
 };
+
 const onClickPreviews = () => {
-  console.log('name', name.value);
-  console.log('props', props.data);
-  if (type.value === "file") {
+  if (props.disabled || type.value === "file") {
     return;
   }
-  if (ismove.value) {
-    return false;
-  }
-  swipeController();
   const url = getShareUrl();
-  console.log('url', url);
 
   Dialog({
     title: t("subPage.previewTitle"),
@@ -384,16 +403,18 @@ const onClickPreviews = () => {
       type: "share",
       url,
       general: t("subPage.panel.general"),
-      notify: t("subPage.copyNotify.succeed"),
-      tipsTitle: t(`subPage.panel.tips.title`),
+      notify: t("subPage.copyNotify.succeedWithShare"),
+      includeUnsupportedProxyLabel: t("subPage.panel.options.includeUnsupportedProxy"),
+      prettyYamlLabel: t("subPage.panel.options.prettyYaml"),
+      displayPreviewInWebPageLabel: t("moreSettingPage.displayPreviewInWebPage"),
+      tipsTitle: t("subPage.panel.tips.title"),
       tipsContent: `${t("subPage.panel.tips.content")}\n${t(
         "syncPage.addArtForm.includeUnsupportedProxy.tips.content",
       )}`,
-      desc: t(`subPage.panel.tips.desc`),
-      tipsOkText: t(`subPage.panel.tips.ok`),
-      tipsCancelText: t(`subPage.panel.tips.cancel`),
+      desc: t("subPage.panel.tips.desc"),
+      tipsOkText: t("subPage.panel.tips.ok"),
+      tipsCancelText: t("subPage.panel.tips.cancel"),
     }),
-    onOpened: () => swipe.value.close(),
     popClass: "auto-dialog",
     // @ts-ignore
     closeOnClickOverlay: true,
@@ -421,8 +442,14 @@ const onClickPreviews = () => {
   margin-right: auto;
   border-radius: var(--item-card-radios);
   display: flex;
+  min-width: 0;
   background: var(--card-color);
   cursor: pointer;
+  overflow: hidden;
+
+  &.disabled {
+    cursor: default;
+  }
 
   :deep(.nut-avatar) {
     flex-shrink: 0;
@@ -432,55 +459,87 @@ const onClickPreviews = () => {
     border-radius: 12px;
 
     img {
-      object-fit: contain;
+      object-fit: var(--icon-fit, cover);
       border-radius: 10px;
     }
   }
 
   > .sub-item-content {
+    min-width: 0;
     flex: 1;
     line-height: 1.6;
+    display: flex;
+    flex-direction: column;
 
     .sub-item-title-wrapper {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 2px;
 
       .sub-item-title {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 1;
-        word-wrap: break-word;
-        word-break: break-all;
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
         overflow: hidden;
         font-size: 16px;
         color: var(--primary-text-color);
       }
-      .share-sub-link,
-      .copy-sub-link,
-      .refresh-sub-flow {
+
+      .sub-item-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tag {
+        display: inline-flex;
+        flex: 0 0 auto;
+        margin: 0 1px;
+
+        :deep(.nut-tag) {
+          padding: 2px 3px;
+          font-size: 11px;
+          line-height: 1.2;
+        }
+      }
+
+      .link-item-actions {
+        position: relative;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+      }
+
+        .public-link-action,
+        .copy-sub-link,
+        .refresh-sub-flow {
         background-color: transparent;
         border: none;
-        padding: 0 8px;
+        padding: 0 6px;
         cursor: pointer;
         display: inline-flex;
         justify-content: center;
         align-items: center;
 
         svg {
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
           color: var(--comment-text-color);
+        }
+
+        &:disabled {
+          cursor: default;
+          opacity: 0.45;
         }
       }
 
       button {
         white-space: nowrap;
-      }
-
-      div {
-        display: flex;
-        align-items: center;
       }
     }
 
@@ -500,6 +559,7 @@ const onClickPreviews = () => {
         line-height: 1.8;
       }
     }
+
     .sub-item-remark {
       display: -webkit-box;
       -webkit-box-orient: vertical;
@@ -525,38 +585,29 @@ const onClickPreviews = () => {
       word-break: break-all;
       overflow: hidden;
       font-size: 12px;
-      // margin-top: 3.5px;
       max-width: 80%;
       color: var(--comment-text-color);
     }
   }
 }
 
-.sub-item-swipe {
-  :deep(.nut-swipe__left) {
-    .sub-item-swipe-btn-wrapper {
-      padding-left: 24px;
-    }
+.sub-item-wrapper.is-dual-column {
+  :deep(.nut-avatar) {
+    margin-right: 12px;
   }
 
-  :deep(.nut-swipe__right),
-  :deep(.nut-swipe__left) {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
+  > .sub-item-content {
+    .sub-item-title-wrapper {
+      align-items: flex-start;
+      gap: 6px;
+    }
 
-    .sub-item-swipe-btn-wrapper {
-      padding-left: 14px;
+    .sub-item-title {
+      font-size: 15px;
+    }
 
-      &:last-child {
-        padding-right: 14px;
-      }
-
-      .sub-item-swipe-btn {
-        border-radius: 50%;
-        height: 46px;
-        width: 44px;
-      }
+    .sub-item-remark {
+      -webkit-line-clamp: 1;
     }
   }
 }

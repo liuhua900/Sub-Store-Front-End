@@ -4,13 +4,40 @@ import { useAppNotifyStore } from '@/store/appNotify';
 import service from '@/api';
 import axios from 'axios';
 import { initStores } from '@/utils/initApp';
+import { isValidShareBaseUrl, normalizeShareBaseUrl } from '@/utils/share';
 
 const lsKey = 'hostAPI';
+const defaultAPI = import.meta.env.VITE_API_URL || 'https://sub.store';
+
+const normalizeHostApiUrl = (url: string) => {
+  return url.replace(/\/$/, '');
+};
+
+const normalizeHostAPIItem = (api: HostAPI): HostAPI => {
+  const normalizedShareBaseUrl = normalizeShareBaseUrl(api.shareBaseUrl);
+  const normalizedApi: HostAPI = {
+    name: api.name,
+    url: normalizeHostApiUrl(api.url),
+  };
+
+  if (normalizedShareBaseUrl && isValidShareBaseUrl(normalizedShareBaseUrl)) {
+    normalizedApi.shareBaseUrl = normalizedShareBaseUrl;
+  }
+
+  return normalizedApi;
+};
 
 const getHostAPI = (): HostAPIStorage => {
   const item = localStorage.getItem(lsKey);
   if (item) {
-    return JSON.parse(item);
+    const parsed = JSON.parse(item) as HostAPIStorage;
+    const normalized = {
+      current: parsed.current || '',
+      apis: Array.isArray(parsed.apis)
+        ? parsed.apis.map(normalizeHostAPIItem)
+        : [],
+    };
+    return normalized;
   } else {
     setHostAPI({
       current: '',
@@ -23,27 +50,39 @@ export const getHostAPIUrl = (): string => {
   const { current, apis } = getHostAPI();
   return (
     apis.find(api => api.name === current)?.url ||
-    import.meta.env.VITE_API_URL ||
-    'https://sub.store'
+    defaultAPI
   ).replace(/\/$/, ''); // 去除末尾斜杠;
+};
+
+export const getHostAPIShareBaseUrl = (): string => {
+  const { current, apis } = getHostAPI();
+  return normalizeShareBaseUrl(apis.find(api => api.name === current)?.shareBaseUrl);
 };
 
 const setHostAPI = (hostAPI: HostAPIStorage) => {
   localStorage.setItem(lsKey, JSON.stringify(hostAPI));
 };
 export const useHostAPI = () => {
-  const defaultAPI = import.meta.env.VITE_API_URL || 'https://sub.store';
-
   const { showNotify } = useAppNotifyStore();
   const apis = ref(getHostAPI().apis);
   const currentName = ref(getHostAPI().current);
+  let skipNextCurrentInit = false;
+  const currentApi = computed(() => {
+    return apis.value.find(api => api.name === currentName.value);
+  });
   const currentUrl = computed(() => {
-    const url = apis.value.find(api => api.name === currentName.value)?.url ?? defaultAPI
+    const url = currentApi.value?.url ?? defaultAPI
     return url.startsWith('/') ? `${window.location.origin}${url}` : url;
+  });
+  const currentShareBaseUrl = computed(() => {
+    return normalizeShareBaseUrl(currentApi.value?.shareBaseUrl);
   });
 
   const stopWatchCurrent = watch(currentName, async (newName, oldName) => {
     if (newName !== oldName) {
+      const skipInit = skipNextCurrentInit;
+      skipNextCurrentInit = false;
+
       // 保存新的API配置
       setHostAPI({
         ...getHostAPI(),
@@ -59,7 +98,7 @@ export const useHostAPI = () => {
       globalStore.setFetchResult(false);
 
       // 设置新的API URL并初始化stores
-      await globalStore.setHostAPI(url);
+      await globalStore.setHostAPI(url, { skipInit });
     }
   });
   const stopWatchApis = watch(
@@ -67,7 +106,7 @@ export const useHostAPI = () => {
     newApis => {
       setHostAPI({
         ...getHostAPI(),
-        apis: newApis,
+        apis: newApis.map(normalizeHostAPIItem),
       });
     },
     { deep: true }
@@ -77,24 +116,32 @@ export const useHostAPI = () => {
     stopWatchApis();
   });
 
-  const setCurrent = (name: string) => {
+  const setCurrent = (name: string, options?: { skipInit?: boolean }) => {
     if (name !== '' && !apis.value.find(api => api.name === name)) {
       return;
+    }
+    if (options?.skipInit && currentName.value !== name) {
+      skipNextCurrentInit = true;
     }
     currentName.value = name;
   };
 
-  const addApi = async ({ name, url }: HostAPI, skipConnectionCheck = false) => {
+  const addApi = async (apiInput: HostAPI, skipConnectionCheck = false) => {
+    const { name, url } = apiInput;
     if (apis.value.find(api => api.name === name)) {
+      console.log('apis', apis.value);
+      
       showNotify({
         title: 'API 名称重复',
         type: 'danger',
       });
       return false;
     } else {
+      const api = normalizeHostAPIItem(apiInput);
+
       // 如果跳过连接检查，直接添加API
       if (skipConnectionCheck) {
-        apis.value.push({ name, url });
+        apis.value.push(api);
         return true;
       }
 
@@ -103,7 +150,7 @@ export const useHostAPI = () => {
           url + '/api/utils/env'
         );
         if (res?.data?.status === 'success') {
-          apis.value.push({ name, url });
+          apis.value.push(api);
           return true;
         } else {
           showNotify({
@@ -131,10 +178,34 @@ export const useHostAPI = () => {
     }
   };
 
-  const editApi = ({ name, url }: HostAPI) => {
+  const editApi = ({ name, url, shareBaseUrl }: HostAPI) => {
     const index = apis.value.findIndex(api => api.name === name);
-    if (index === -1) return;
-    apis.value[index].url = url;
+    if (index === -1) return false;
+    const nextApi = normalizeHostAPIItem({
+      ...apis.value[index],
+      url,
+      shareBaseUrl,
+    });
+    apis.value[index] = nextApi;
+    return true;
+  };
+
+  const editApiName = async ({ name, url}: { name: string; url: string }) => {
+    const index = apis.value.findIndex(api => api.url === url);
+    if (index === -1) return false;
+    if (apis.value.some((api, apiIndex) => apiIndex !== index && api.name === name)) {
+      showNotify({
+        title: 'API 名称重复',
+        type: 'danger',
+      });
+      return false;
+    }
+    const oldName = apis.value[index].name;
+    apis.value[index].name = name;
+    if (currentName.value === oldName) {
+      currentName.value = name;
+    }
+    return true;
   };
 
   const handleUrlQuery = async ({
@@ -166,6 +237,24 @@ export const useHostAPI = () => {
         }
       }
     }
+    // 处理 concurrencyWaitTime 参数
+    const concurrencyWaitTime = query
+      .slice(1)
+      .split('&')
+      .map(i => i.split('='))
+      .find(i => i[0] === 'concurrencyWaitTime');
+    if (concurrencyWaitTime) {
+      const value = parseInt(concurrencyWaitTime[1], 10);
+      if (!isNaN(value)) {
+        if (value > 0) {
+          console.log(`设置并发等待时间 ${value}`)
+          localStorage.setItem('concurrencyWaitTime', value.toString());
+        } else {
+          console.log(`清除并发等待时间设置`)
+          localStorage.removeItem('concurrencyWaitTime');
+        }
+      }
+    }
     // 处理 timeout 参数
     const timeout = query
       .slice(1)
@@ -184,6 +273,18 @@ export const useHostAPI = () => {
         }
       }
     }
+
+    const shareBaseUrlParam = query
+      .slice(1)
+      .split('&')
+      .map(i => i.split('='))
+      .find(i => i[0] === 'shareBaseUrl');
+    const queryShareBaseUrl = shareBaseUrlParam
+      ? normalizeShareBaseUrl(decodeURIComponent(shareBaseUrlParam[1] || ''))
+      : undefined;
+    const validQueryShareBaseUrl = isValidShareBaseUrl(queryShareBaseUrl)
+      ? queryShareBaseUrl
+      : undefined;
 
     // 处理api参数
     const apiUrl = query
@@ -211,6 +312,13 @@ export const useHostAPI = () => {
       const isExist = apis.value.find(api => api.url === url);
 
       if (isExist) {
+        if (validQueryShareBaseUrl !== undefined) {
+          editApi({
+            ...isExist,
+            shareBaseUrl: validQueryShareBaseUrl,
+          });
+        }
+
         // 如果已存在且不是当前API，则切换到该API
         if (isExist.name === currentName.value) {
           // 如果是当前API，尝试重新连接
@@ -248,7 +356,7 @@ export const useHostAPI = () => {
         globalStore.setFetchResult(false);
 
         // 切换到新API
-        setCurrent(isExist.name);
+        setCurrent(isExist.name, { skipInit: true });
 
         // 设置已配置标志，表示用户已通过URL参数成功配置了后端
         localStorage.setItem('backendConfigured', 'true');
@@ -261,10 +369,10 @@ export const useHostAPI = () => {
 
         // 无论连接是否成功，都先添加到列表并设置为当前API
         // 使用skipConnectionCheck=true跳过连接检查直接添加
-        const addResult = await addApi({ name, url }, true);
+        const addResult = await addApi({ name, url, shareBaseUrl: validQueryShareBaseUrl }, true);
         if (addResult) {
           // 设置为当前API
-          setCurrent(name);
+          setCurrent(name, { skipInit: true });
 
           // 清除旧的连接状态
           globalStore.setFetchResult(false);
@@ -365,7 +473,7 @@ export const useHostAPI = () => {
         globalStore.setFetchResult(false);
 
         // 切换到新API
-        setCurrent(isExist.name);
+        setCurrent(isExist.name, { skipInit: true });
 
         // 设置已配置标志
         localStorage.setItem('magicPathConfigured', 'true');
@@ -382,7 +490,7 @@ export const useHostAPI = () => {
         const addResult = await addApi({ name, url: apiUrl }, true);
         if (addResult) {
           // 设置为当前API
-          setCurrent(name);
+          setCurrent(name, { skipInit: true });
 
           // 清除旧的连接状态
           globalStore.setFetchResult(false);
@@ -460,11 +568,13 @@ export const useHostAPI = () => {
   return {
     currentName,
     currentUrl,
+    currentShareBaseUrl,
     apis,
     setCurrent,
     addApi,
     deleteApi,
     editApi,
+    editApiName,
     handleUrlQuery,
     defaultAPI,
   };

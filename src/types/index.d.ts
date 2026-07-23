@@ -1,4 +1,6 @@
 type SubsType = 'sub' | 'collection';
+type DeleteMode = 'archive' | 'permanent';
+type ArchiveItemType = 'sub' | 'col' | 'file' | 'artifact' | 'share';
 
 type MyAxiosRes = ErrorResponse | SucceedResponse;
 
@@ -15,6 +17,26 @@ interface ErrorResponse {
 interface SucceedResponse {
   status: 'success';
   data?: any;
+}
+
+interface DebugLogEntry {
+  id: string;
+  time: number;
+  level: string;
+  message: string;
+}
+
+interface DebugLogQuery {
+  limit?: number | string;
+  keyword?: string;
+  regex?: boolean | string;
+  ignoreCase?: boolean | string;
+}
+
+interface DebugLogsResponse {
+  logs: DebugLogEntry[];
+  total: number;
+  maxCount: number;
 }
 
 interface IpApiData {
@@ -50,6 +72,8 @@ interface IpApiResponse {
   status: 'success' | 'failed';
   data: IpApiData;
 }
+
+type NodeInfoIpApiStatus = 'idle' | 'loading' | 'success' | 'error';
 
 interface NodeInfo {
   name: string;

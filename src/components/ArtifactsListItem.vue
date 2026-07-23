@@ -1,6 +1,7 @@
 <template>
   <nut-swipe
     class="sub-item-swipe"
+    :class="{ 'is-dual-column': props.isDualColumn }"
     ref="swipe"
     @close="setIsMoveClose()"
     @open="setIsMoveOpen()"
@@ -8,14 +9,15 @@
   >
     <div
       class="sub-item-wrapper"
-      :style="{ padding: appearanceSetting.isSimpleMode ? '9px' : '16px' }"
+      :class="{ 'is-dual-column': props.isDualColumn }"
+      :style="{ padding: itemPadding, '--icon-fit': iconFit }"
       @click="handleContentClick"
     >
       <div v-if="appearanceSetting.isShowIcon" class="sub-img-wrappers" @click.stop="openUrl">
         <nut-avatar
           :class="{ 'sub-item-customer-icon': !isIconColor }"
-          :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-          :url="icon"
+          :size="avatarSize"
+          :url="displayIcon"
           bg-color=""
         ></nut-avatar>
       </div>
@@ -23,10 +25,13 @@
         <div class="sub-item-title-wrapper">
           <h3 class="sub-item-title">
             {{ displayName }}
+            <span v-for="item in tag" :key="item" class="tag">
+              <nut-tag>{{ item }}</nut-tag>
+            </span>
           </h3>
           <div class="title-right-wrapper" v-if="!appearanceSetting.isSimpleMode">
             <button
-              v-if="!appearanceSetting.isShowIcon && artifact.url"
+              v-if="!appearanceSetting.isShowIcon && artifactUrl"
               class="copy-sub-link"
               @click.stop="openUrl"
             >
@@ -35,10 +40,16 @@
             <button
               class="copy-sub-link"
               style="padding: 0 12px"
-              v-if="artifact.url"
+              v-if="artifactUrl"
               @click.stop="onClickCopyLink"
             >
               <font-awesome-icon icon="fa-solid fa-clone"></font-awesome-icon>
+            </button>
+            <button
+              class="copy-sub-link"
+              @click.stop="onClickEdit"
+            >
+              <font-awesome-icon icon="fa-solid fa-pen-nib" />
             </button>
             <button
               class="copy-sub-link"
@@ -56,18 +67,25 @@
             {{ detail.firstLine }}
           </p>
           <div class="second-line-wrapper">
-            <p>{{ detail.secondLine }}</p>
+            <p :class="{ 'dual-non-simple-second-line': isDualNonSimpleMode }">
+              {{
+                appearanceSetting.isSimpleMode
+                  ? simpleDetailSecondLine
+                  : nonSimpleDetailSecondLine
+              }}
+            </p>
             <div class="task-switch">
               <div v-if="appearanceSetting.isSimpleMode">
+                <div class="simple-actions">
                 <button
-                  v-if="!appearanceSetting.isShowIcon && artifact.url"
+                  v-if="!appearanceSetting.isShowIcon && artifactUrl"
                   class="copy-sub-link"
                   @click.stop="openUrl"
                 >
                   <font-awesome-icon icon="fa-solid fa-eye" />
                 </button>
                 <button
-                  v-if="artifact.url"
+                  v-if="artifactUrl"
                   class="copy-sub-link"
                   style="padding: 0 12px"
                   @click.stop="onClickCopyLink"
@@ -77,6 +95,12 @@
                   ></font-awesome-icon>
                 </button>
                 <button
+                  class="copy-sub-link"
+                  @click.stop="onClickEdit"
+                >
+                  <font-awesome-icon icon="fa-solid fa-pen-nib" />
+                </button>
+                <button
                     class="copy-sub-link"
                     @click.stop="swipeController"
                     v-if="!isMobile()"
@@ -84,8 +108,9 @@
                   >
                   <font-awesome-icon icon="fa-solid fa-angles-right" />
                 </button>
+                </div>
               </div>
-              <span v-if="!appearanceSetting.isSimpleMode">
+              <span class="switch-label" v-if="!appearanceSetting.isSimpleMode">
                 {{ $t(`syncPage.syncSwitcher`) }}
               </span>
               <span @click.stop>
@@ -98,6 +123,16 @@
             </div>
           </div>
         </div>
+        <p
+          v-if="remark && (
+            appearanceSetting.isSimpleMode
+              ? appearanceSetting.isSimpleShowRemark && !shouldInlineRemarkInSecondLine
+              : !isDualNonSimpleMode
+          )"
+          class="sub-item-remark"
+        >
+          <span>{{ remarkText }}</span>
+        </p>
       </div>
     </div>
 
@@ -170,68 +205,55 @@
 </template>
 
 <script lang="ts" setup>
-import logoIcon from "@/assets/icons/logo.png";
-import logoRedIcon from "@/assets/icons/logo-red.png";
-import singboxIcon from "@/assets/icons/sing-box.png";
-import clashIcon from "@/assets/icons/clash.png";
-import egernIcon from "@/assets/icons/egern.png";
-import clashMetaIcon from "@/assets/icons/clashmeta.png";
-import loonIcon from "@/assets/icons/loon.png";
-import quanxIcon from "@/assets/icons/quanx.png";
-import shadowRocketIcon from "@/assets/icons/shadowrocket.png";
-import surfboardIcon from "@/assets/icons/surfboard.png";
-import stashIcon from "@/assets/icons/stash.png";
-import surgeIcon from "@/assets/icons/surge.png";
-import surgeMacIcon from "@/assets/icons/surgeformac_text.png";
-import v2rayIcon from "@/assets/icons/v2ray.png";
-import singboxColorIcon from "@/assets/icons/sing-box_color.png";
-import clashColorIcon from "@/assets/icons/clash_color.png";
-import egernColorIcon from "@/assets/icons/egern_color.png";
-import clashMetaColorIcon from "@/assets/icons/clashmeta_color.png";
-import loonColorIcon from "@/assets/icons/loon_color.png";
-import quanxColorIcon from "@/assets/icons/quanx_color.png";
-import shadowRocketColorIcon from "@/assets/icons/shadowrocket_color.png";
-import surfboardColorIcon from "@/assets/icons/surfboard_color.png";
-import stashColorIcon from "@/assets/icons/stash_color.png";
-import surgeColorIcon from "@/assets/icons/surge_color.png";
-import surgeMacColorIcon from "@/assets/icons/surgeformac_text_color.png";
-import v2rayColorIcon from "@/assets/icons/v2ray_color.png";
 import { useAppNotifyStore } from "@/store/appNotify";
 import { useArtifactsStore } from "@/store/artifacts";
 import { useSettingsStore } from "@/store/settings";
 import { useSubsStore } from "@/store/subs";
 import { butifyDate } from "@/utils/butifyDate";
+import { resolveArtifactIcon } from "@/utils/artifactIcon";
+import { createGithubProxyUrlRewriter } from "@/utils/githubProxy";
+import { resolveImageFit } from "@/utils/iconFit";
 import { isMobile } from "@/utils/isMobile";
 import { Dialog, Toast } from "@nutui/nutui";
 import { useClipboard } from "@vueuse/core";
 import { storeToRefs } from "pinia";
-import { computed, createVNode, ref, toRaw, watch, watchEffect } from "vue";
+import { computed, ref, toRaw, watch, watchEffect } from "vue";
 import useV3Clipboard from "vue-clipboard3";
 import { useI18n } from "vue-i18n";
 import { useGlobalStore } from "@/store/global";
 import { useHostAPI } from "@/hooks/useHostAPI";
+import { useBackend } from "@/hooks/useBackend";
+import { openManagedDeleteDialog } from "@/utils/archive";
 const globalStore = useGlobalStore();
 const { copy, isSupported } = useClipboard();
 const { toClipboard: copyFallback } = useV3Clipboard();
 
 const { t } = useI18n();
 const { currentUrl: host } = useHostAPI();
+const { env } = useBackend();
+const isArchiveEnabled = computed(() => {
+  return env.value?.feature?.archive;
+});
 
 const props = defineProps<{
   name: string;
   disabled?: boolean;
+  isDualColumn?: boolean;
 }>();
 
 const { showNotify } = useAppNotifyStore();
 const subsStore = useSubsStore();
 const artifactsStore = useArtifactsStore();
 const settingsStore = useSettingsStore();
-const { appearanceSetting } = storeToRefs(settingsStore);
+const { appearanceSetting, githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
 const { artifacts } = storeToRefs(artifactsStore);
 const artifact = computed(() => {
   return artifacts.value.find((item) => item.name === props.name);
 });
 const emit = defineEmits(["edit"]);
+const artifactUrl = computed(() => {
+  return artifact.value?.upload === false ? "" : artifact.value?.url || "";
+});
 
 const displayName = computed(() => {
   return (
@@ -239,6 +261,36 @@ const displayName = computed(() => {
     artifact.value["display-name"] ||
     artifact.value.name
   );
+});
+const tag = computed(() => artifact.value?.tag || []);
+const remark = computed(() => artifact.value?.remark || "");
+const remarkText = computed(() => {
+  if (remark.value) {
+    return remark.value;
+  }
+  return "";
+});
+const shouldInlineRemarkInSecondLine = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && appearanceSetting.value.isSimpleMode
+    && remarkText.value
+    && appearanceSetting.value.isSimpleShowRemark
+  );
+});
+const isDualNonSimpleMode = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && !appearanceSetting.value.isSimpleMode,
+  );
+});
+const avatarSize = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "36";
+  return props.isDualColumn ? "40" : "48";
+});
+const itemPadding = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "9px";
+  return props.isDualColumn ? "12px" : "16px";
 });
 
 const isInit = ref(false);
@@ -262,48 +314,22 @@ const sourceSub = computed(() => {
 const isIconColor = computed(() => {
   return artifact.value.isIconColor !== false;
 });
+const iconFit = computed(() => {
+  return resolveImageFit(artifact.value?.iconFit, appearanceSetting.value.iconFit);
+});
 
 const icon = computed(() => {
-  const icon = artifact.value.icon;
-  if (icon) {
-    return icon;
-  }
-  let platform = String(artifact.value.platform);
-  if (["file"].includes(artifact.value.type)) {
-    if (sourceSub.value?.icon) {
-      return sourceSub.value.icon;
-    } else {
-      platform = "";
-    }
-  }
-  switch (platform) {
-    case "Surge":
-      return isIconColor ? surgeColorIcon : surgeIcon;
-    case "SurgeMac":
-      return isIconColor ? surgeMacColorIcon : surgeMacIcon;
-    case "QX":
-      return isIconColor ? quanxColorIcon : quanxIcon;
-    case "Loon":
-      return isIconColor ? loonColorIcon : loonIcon;
-    case "Egern":
-      return isIconColor ? egernColorIcon : egernIcon;
-    case "Clash":
-      return isIconColor ? clashColorIcon : clashIcon;
-    case "ClashMeta":
-      return isIconColor ? clashMetaColorIcon : clashMetaIcon;
-    case "Stash":
-      return isIconColor ? stashColorIcon : stashIcon;
-    case "ShadowRocket":
-      return isIconColor ? shadowRocketColorIcon : shadowRocketIcon;
-    case "V2Ray":
-      return isIconColor ? v2rayColorIcon : v2rayIcon;
-    case "sing-box":
-      return isIconColor ? singboxColorIcon : singboxIcon;
-    case "Surfboard":
-      return isIconColor ? surfboardColorIcon : surfboardIcon;
-    default:
-      return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon;
-  }
+  return resolveArtifactIcon({
+    artifact: artifact.value,
+    isDefaultIcon: appearanceSetting.value.isDefaultIcon,
+    sourceIcon: sourceSub.value?.icon,
+  });
+});
+const githubUrlRewriter = computed(() => {
+  return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+});
+const displayIcon = computed(() => {
+  return githubUrlRewriter.value(icon.value) || icon.value;
 });
 
 
@@ -316,28 +342,27 @@ const sourceUrl = computed(() => {
     const url = `${host.value}${path}`;
     return url;
   }
-  const urlTarget: string =
-    artifact.value.platform !== null
-      ? `?target=${artifact.value.platform}`
-      : "";
-  let urlIncludeUnsupportedProxy = artifact.value.includeUnsupportedProxy
-    ? `includeUnsupportedProxy=true`
-    : "";
-  if (urlTarget && urlIncludeUnsupportedProxy) {
-    urlIncludeUnsupportedProxy = `&${urlIncludeUnsupportedProxy}`;
-  } else if (urlIncludeUnsupportedProxy) {
-    urlIncludeUnsupportedProxy = `?${urlIncludeUnsupportedProxy}`;
+  const query = new URLSearchParams();
+  if (artifact.value.platform !== null) {
+    query.set("target", artifact.value.platform);
   }
+  if (artifact.value.includeUnsupportedProxy) {
+    query.set("includeUnsupportedProxy", "true");
+  }
+  if (artifact.value.prettyYaml) {
+    query.set("prettyYaml", "true");
+  }
+  const queryString = query.toString();
   return `${host.value}/download/${
     artifact.value.type === "subscription" ? "" : "collection/"
   }${encodeURIComponent(
     artifact.value.source
-  )}${urlTarget}${urlIncludeUnsupportedProxy}`;
+  )}${queryString ? `?${queryString}` : ""}`;
 });
 
 const openUrl = () => {
-  if (artifact.value.url) {
-    window.open(artifact.value.url);
+  if (artifactUrl.value) {
+    window.open(artifactUrl.value);
   }
 };
 
@@ -462,7 +487,7 @@ const detail = computed(() => {
     ? sourceSub.value?.displayName ||
       sourceSub.value?.["display-name"] ||
       sourceSub.value?.name
-    : t("specificWord.unknownSource");
+    : (artifact.value.source ?`${artifact.value.source}(🚫)` : t("specificWord.unknownSource"));
   const type = transferText("type") || "";
   if (appearanceSetting.value.isSimpleMode) {
     return {
@@ -478,6 +503,16 @@ const detail = computed(() => {
       secondLine: transferText("time"),
     };
   }
+});
+const simpleDetailSecondLine = computed(() => {
+  if (!shouldInlineRemarkInSecondLine.value) {
+    return detail.value.secondLine;
+  }
+
+  return [detail.value.secondLine, remarkText.value].filter(Boolean).join(" · ");
+});
+const nonSimpleDetailSecondLine = computed(() => {
+  return [detail.value.secondLine, remarkText.value].filter(Boolean).join(" · ");
 });
 
 const swipeController = () => {
@@ -512,15 +547,15 @@ const swipeController = () => {
 
 const onClickCopyLink = async () => {
   if (isSupported) {
-    await copy(encodeURI(artifact.value.url));
+    await copy(encodeURI(artifactUrl.value));
   } else {
-    await copyFallback(encodeURI(artifact.value.url));
+    await copyFallback(encodeURI(artifactUrl.value));
   }
   showNotify({ title: t("syncPage.copyNotify.succeed"), type: "success" });
 };
 
-const onDeleteConfirm = async () => {
-  const shouldShowToast = artifact.value.updated
+const onDeleteConfirm = async (mode: DeleteMode = "permanent") => {
+  const shouldShowToast = Boolean(artifactUrl.value);
   if (shouldShowToast) {
     Toast.loading("正在删除...", {
       cover: true,
@@ -528,7 +563,7 @@ const onDeleteConfirm = async () => {
     });
   }
 
-  await artifactsStore.deleteArtifact(artifact.value.name);
+  await artifactsStore.deleteArtifact(artifact.value.name, mode);
 
   if (shouldShowToast) {
     Toast.hide("delete-toast");
@@ -550,21 +585,21 @@ const onClickEdit = () => {
 };
 
 const onClickDelete = () => {
-  Dialog({
-    title: t("syncPage.deleteArt.title"),
-    content: createVNode(
-      "span",
-      {},
-      t("syncPage.deleteArt.desc", { displayName: displayName.value })
-    ),
-    onCancel: () => {},
-    onOk: onDeleteConfirm,
-    onOpened: () => {},
-    popClass: "auto-dialog",
-    cancelText: t("syncPage.deleteArt.btn.cancel"),
-    okText: t("syncPage.deleteArt.btn.confirm"),
-    closeOnPopstate: true,
-    lockScroll: false,
+  openManagedDeleteDialog({
+    enabled: isArchiveEnabled.value,
+    managedTitle: t("archivePage.liveDelete.title"),
+    managedContent: [
+      t("archivePage.liveDelete.desc", { displayName: displayName.value }),
+      t("syncPage.deleteArt.archiveExtra"),
+    ].join("\n\n"),
+    managedCancelText: t("archivePage.liveDelete.btn.archive"),
+    managedOkText: t("archivePage.liveDelete.btn.permanent"),
+    legacyTitle: t("syncPage.deleteArt.title"),
+    legacyContent: t("syncPage.deleteArt.desc", { displayName: displayName.value }),
+    legacyCancelText: t("syncPage.deleteArt.btn.cancel"),
+    legacyOkText: t("syncPage.deleteArt.btn.confirm"),
+    onArchive: () => onDeleteConfirm("archive"),
+    onPermanent: () => onDeleteConfirm("permanent"),
   });
 };
 
@@ -608,8 +643,10 @@ watch(isSyncOpen, async () => {
   display: flex;
   flex-direction: row; //
   justify-content: flex-end; //
+  min-width: 0;
   background: var(--card-color);
   cursor: pointer;
+  overflow: hidden;
 
   :deep(.nut-avatar) {
     flex-shrink: 0;
@@ -619,18 +656,22 @@ watch(isSyncOpen, async () => {
     border-radius: 12px;
 
     img {
-      object-fit: contain;
+      object-fit: var(--icon-fit, cover);
       border-radius: 10px;
     }
   }
 
   .sub-item-content {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
 
     .sub-item-title-wrapper {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 2px;
 
       .sub-item-title {
         display: -webkit-box;
@@ -641,38 +682,65 @@ watch(isSyncOpen, async () => {
         overflow: hidden;
         font-size: 16px;
         color: var(--primary-text-color);
+
+        .tag {
+          display: inline-flex;
+          margin: 0 1px;
+          vertical-align: middle;
+
+          :deep(.nut-tag) {
+            padding: 2px 3px;
+            font-size: 11px;
+            line-height: 1.2;
+          }
+        }
+      }
+
+      .title-right-wrapper {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
       }
     }
 
     .sub-item-detail {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
       word-wrap: break-word;
-      word-break: break-all;
-      // overflow: hidden;
       // margin-top: 3.5px;
       font-size: 12px;
 
       .second-line-wrapper {
         width: 100%;
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        align-items: flex-start;
+
+        > p {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding-right: 8px;
+        }
 
         .task-switch {
-          flex: 1;
+          flex: 0 0 auto;
           display: flex;
           align-items: center;
-
           flex-direction: row;
           justify-content: flex-end; // ios 14
+          margin-left: auto;
+
+          .simple-actions {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+          }
 
           span {
-            margin-right: 8px;
+            margin-right: 6px;
             font-weight: normal;
             // line-height: 2.8;
             color: var(--comment-text-color);
+          }
+          .switch-label {
+            flex-shrink: 0;
           }
 
           .my-switch {
@@ -689,16 +757,34 @@ watch(isSyncOpen, async () => {
       }
 
       p {
-        display: block;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        word-break: break-all;
         line-height: 1.8;
       }
 
       color: var(--comment-text-color);
     }
+
+    .sub-item-remark {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+      word-break: break-all;
+      line-height: 1.8;
+      font-size: 12px;
+      color: var(--comment-text-color);
+      margin-top: 2px;
+    }
   }
 }
 
 .sub-item-swipe {
+  display: block;
+  min-width: 0;
   :deep(.nut-swipe__left) {
     .sub-item-swipe-btn-wrapper {
       padding-left: 24px;
@@ -727,10 +813,47 @@ watch(isSyncOpen, async () => {
   }
 }
 
+.sub-item-swipe.is-dual-column {
+  .sub-item-wrapper {
+    :deep(.nut-avatar) {
+      margin-right: 12px;
+    }
+
+    .sub-item-content {
+      .sub-item-title-wrapper {
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .sub-item-title {
+        font-size: 15px;
+      }
+
+      .sub-item-detail {
+        .second-line-wrapper {
+          gap: 2px;
+        }
+
+        p {
+          -webkit-line-clamp: 1;
+        }
+      }
+
+      .sub-item-remark {
+        -webkit-line-clamp: 1;
+      }
+
+      .dual-non-simple-second-line {
+        min-height: 18px;
+      }
+    }
+  }
+}
+
 .copy-sub-link {
   background-color: transparent;
   border: none;
-  padding: 0 12px;
+  padding: 0 8px;
   cursor: pointer;
   display: inline-flex;
   justify-content: center;

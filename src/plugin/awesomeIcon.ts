@@ -4,9 +4,12 @@ import {
   faAnglesRight,
   faAngleRight,
   faArrowRotateRight,
+  faArrowsRotate,
   faArrowUpRightFromSquare,
+  faArrowLeft,
   faBan,
   faCheck,
+  faClock,
   faCircleQuestion,
   faCircleXmark,
   faXmark,
@@ -14,11 +17,16 @@ import {
   faCloudArrowDown,
   faCloudArrowUp,
   faCode,
+  faDesktop,
   faEye,
   faEllipsis,
+  faFileLines,
   faFloppyDisk,
   faGrip,
   faLanguage,
+  faList,
+  faListCheck,
+  faTableColumns,
   faToggleOn,
   faToggleOff,
   faLocationArrow,
@@ -26,6 +34,7 @@ import {
   faPenNib,
   faPenToSquare,
   faPlus,
+  faReply,
   faTrashCan,
   faEraser,
   faT,
@@ -37,7 +46,11 @@ import {
   faSquareArrowUpRight,
   faMaximize,
   faMinimize,
-  faBars
+  faMobileScreenButton,
+  faBars,
+  faBoxArchive,
+  faShare,
+  faMagnifyingGlass
 } from '@fortawesome/free-solid-svg-icons';
 
 library.add(faFileImport);
@@ -45,8 +58,13 @@ library.add(faFileExport);
 library.add(faToggleOn);
 library.add(faToggleOff);
 library.add(faLanguage);
+library.add(faList);
+library.add(faListCheck);
+library.add(faTableColumns);
 library.add(faCheck);
+library.add(faClock);
 library.add(faPlus);
+library.add(faReply);
 library.add(faArrowUpRightFromSquare);
 library.add(faTrashCan);
 library.add(faPenNib);
@@ -59,7 +77,11 @@ library.add(faCircleXmark);
 library.add(faXmark);
 library.add(faLocationArrow);
 library.add(faCode);
+library.add(faFileLines);
+library.add(faDesktop);
 library.add(faArrowRotateRight);
+library.add(faArrowsRotate);
+library.add(faArrowLeft);
 library.add(faAnglesRight);
 library.add(faAngleRight);
 library.add(faCloudArrowDown);
@@ -77,3 +99,7 @@ library.add(faBars);
 library.add(faEllipsis);
 library.add(faMaximize);
 library.add(faMinimize);
+library.add(faMobileScreenButton);
+library.add(faBoxArchive);
+library.add(faShare);
+library.add(faMagnifyingGlass);

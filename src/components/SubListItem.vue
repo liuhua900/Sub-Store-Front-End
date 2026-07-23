@@ -2,13 +2,15 @@
   <nut-swipe
     ref="swipe"
     class="sub-item-swipe"
+    :class="{ 'is-dual-column': props.isDualColumn }"
     :disabled="props.disabled"
     @close="setIsMoveClose()"
     @open="setIsMoveOpen()"
   >
     <div
       class="sub-item-wrapper"
-      :style="{ padding: appearanceSetting.isSimpleMode ? '9px' : '16px' }"
+      :class="{ 'is-dual-column': props.isDualColumn }"
+      :style="{ padding: itemPadding, '--icon-fit': iconFit }"
       @click="handleContentClick"
     >
       <div
@@ -23,7 +25,7 @@
       <!-- compareSub -->
       <div
         class="sub-img-wrappers"
-        :style="{ 'margin-top': appearanceSetting.isSimpleMode ? '5px' : '0' }"
+        :style="{ 'margin-top': imageMarginTop }"
         @click.stop="compareSub"
       >
         <!-- icon visible -->
@@ -31,22 +33,22 @@
           <div v-if="isIconColor">
             <nut-avatar
               v-if="props[props.type].icon"
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="props[props.type].icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(props[props.type].icon)"
               bg-color=""
             />
             <nut-avatar
               v-else
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(icon)"
               bg-color=""
             />
           </div>
           <div v-else>
             <nut-avatar
               class="sub-item-customer-icon"
-              :size="appearanceSetting.isSimpleMode ? '36' : '48'"
-              :url="props[props.type].icon || icon"
+              :size="avatarSize"
+              :url="rewriteGithubUrl(props[props.type].icon || icon)"
               bg-color=""
             />
           </div>
@@ -54,8 +56,12 @@
       </div>
       <div class="sub-item-content">
         <div class="sub-item-title-wrapper">
-          <h3 v-if="!appearanceSetting.isSimpleMode" class="sub-item-title">
-            {{ displayName || name }}
+          <h3
+            v-if="!appearanceSetting.isSimpleMode"
+            class="sub-item-title"
+            :title="displayName"
+          >
+            <span class="sub-item-name">{{ displayName }}</span>
             <!-- <span v-if="appOpenBtnVisible" class="app-url" @click.stop="openAppUrl" :title="typeof flow === 'object' ? flow.appUrl : ''">
               <font-awesome-icon icon="fa-solid fa-square-arrow-up-right" />
             </span> -->
@@ -67,8 +73,9 @@
             v-else
             class="sub-item-title"
             style="color: var(--primary-text-color); font-size: 16px"
+            :title="displayName"
           >
-            {{ displayName || name }}
+            <span class="sub-item-name">{{ displayName }}</span>
             <!-- <span v-if="appOpenBtnVisible" class="app-url" @click.stop="openAppUrl" :title="typeof flow === 'object' ? flow.appUrl : ''">
               <font-awesome-icon icon="fa-solid fa-square-arrow-up-right" />
             </span> -->
@@ -101,7 +108,7 @@
             >
               <!-- 官网 -->
               <button
-                v-if="appOpenBtnVisible"
+                v-if="appOpenBtnVisible && !appearanceSetting.hidePublicLinkActionButton"
                 class="compare-sub-link"
                 @click.stop="openAppUrl"
               >
@@ -118,7 +125,7 @@
               <!-- 分享 -->
               <button
                 v-if="shareBtnVisible"
-                class="share-sub-link"
+                class="public-link-action"
                 @click.stop="onClickShareLink"
               >
                 <font-awesome-icon icon="fa-solid fa-share-nodes" />
@@ -162,52 +169,63 @@
           </div>
         </div>
         <template v-if="!appearanceSetting.isSimpleMode">
-          <p v-if="type === 'sub'" class="sub-item-detail">
-            <template v-if="typeof flow === 'string'">
-              <span>
-                {{ flow }}
+          <template v-if="isDualNonSimpleMode">
+            <p class="sub-item-detail">
+              <span :title="nonSimpleLineTitle">
+                {{ nonSimplePrimaryLine }}
               </span>
-            </template>
-            <template v-else-if="typeof flow === 'object'">
-              <span :title="flow.planName">
-                {{ flow.firstLine }}
+            </p>
+            <p class="sub-item-remark dual-non-simple-second-line">
+              <span :title="nonSimpleLineTitle">
+                {{ nonSimpleSecondLine }}
               </span>
-              <span :title="flow.planName">{{ flow.secondLine }}</span>
-            </template>
-          </p>
-          <p v-else-if="type === 'collection'" class="sub-item-detail">
-            {{ collectionDetail }}
-          </p>
-          <p v-if="remark" class="sub-item-remark">
-            <span>{{ remarkText }}</span>
-          </p>
+            </p>
+          </template>
+          <template v-else>
+            <p v-if="type === 'sub'" class="sub-item-detail">
+              <template v-if="typeof flow === 'string'">
+                <span>
+                  {{ flow }}
+                </span>
+              </template>
+              <template v-else-if="typeof flow === 'object'">
+                <span :title="flow.planName">
+                  {{ flow.firstLine }}
+                </span>
+                <span :title="flow.planName">{{ flow.secondLine }}</span>
+              </template>
+            </p>
+            <p v-else-if="type === 'collection'" class="sub-item-detail">
+              {{ collectionDetail }}
+            </p>
+            <p v-if="remark" class="sub-item-remark">
+              <span>{{ remarkText }}</span>
+            </p>
+          </template>
         </template>
 
         <template v-else>
           <p v-if="type === 'sub'" class="sub-item-detail-isSimple">
             <template v-if="typeof flow === 'string'">
               <span style="font-weight: normal">
-                {{ flow }}
+                {{ simpleSubDetailLine }}
               </span>
             </template>
             <template v-else-if="typeof flow === 'object'">
               <span
-                v-if="flow.secondLine"
+                v-if="simpleSubDetailLine"
                 style="font-weight: normal"
                 :title="flow.planName"
               >
-                {{ `${flow.firstLine} | ${flow.secondLine}` }}
-              </span>
-              <span v-else style="font-weight: normal" :title="flow.planName">
-                {{ flow.firstLine }}
+                {{ simpleSubDetailLine }}
               </span>
             </template>
           </p>
           <p v-else-if="type === 'collection'" class="sub-item-detail-isSimple">
-            {{ collectionDetail }}
+            {{ simpleCollectionDetailLine }}
           </p>
           <p
-            v-if="remark && appearanceSetting.isSimpleShowRemark"
+            v-if="remark && appearanceSetting.isSimpleShowRemark && !shouldInlineRemarkInSecondLine"
             class="sub-item-remark"
           >
             <span>{{ remarkText }}</span>
@@ -229,14 +247,14 @@
         </nut-button>
       </div>
       <div class="sub-item-swipe-btn-wrapper">
-        <a
-          :href="`${host}/api/${props.type}/${encodeURIComponent(name)}?raw=1`"
-          target="_blank"
+        <nut-button
+          shape="square"
+          type="success"
+          class="sub-item-swipe-btn"
+          @click="onClickExport"
         >
-          <nut-button shape="square" type="success" class="sub-item-swipe-btn">
-            <font-awesome-icon icon="fa-solid fa-file-export" />
-          </nut-button>
-        </a>
+          <font-awesome-icon icon="fa-solid fa-file-export" />
+        </nut-button>
       </div>
       <!-- preview -->
       <!-- <div class="sub-item-swipe-btn-wrapper">
@@ -269,14 +287,14 @@
         </nut-button>
       </div>
       <div class="sub-item-swipe-btn-wrapper">
-        <a
-          :href="`${host}/api/${props.type}/${encodeURIComponent(name)}?raw=1`"
-          target="_blank"
+        <nut-button
+          shape="square"
+          type="success"
+          class="sub-item-swipe-btn"
+          @click="onClickExport"
         >
-          <nut-button shape="square" type="success" class="sub-item-swipe-btn">
-            <font-awesome-icon icon="fa-solid fa-file-export" />
-          </nut-button>
-        </a>
+          <font-awesome-icon icon="fa-solid fa-file-export" />
+        </nut-button>
       </div>
       <div class="sub-item-swipe-btn-wrapper">
         <nut-button
@@ -295,7 +313,9 @@
     v-if="compareTableIsVisible"
     :name="name"
     :compare-data="compareData"
+    :show-refresh="true"
     @closeCompare="closeCompare"
+    @refresh="refreshCompare"
   />
 </template>
 
@@ -321,7 +341,11 @@ import { useGlobalStore } from "@/store/global";
 import { useSettingsStore } from "@/store/settings";
 import { useSubsStore } from "@/store/subs";
 import { getString } from "@/utils/flowTransfer";
+import { createGithubProxyUrlRewriter } from "@/utils/githubProxy";
+import { resolveImageFit } from "@/utils/iconFit";
 import { isMobile } from "@/utils/isMobile";
+import { openManagedDeleteDialog } from "@/utils/archive";
+import { downloadBlobResponse } from "@/utils/download";
 import CompareTable from "@/views/CompareTable.vue";
 
 const props = defineProps<{
@@ -329,6 +353,7 @@ const props = defineProps<{
   sub?: Sub;
   collection?: Collection;
   disabled?: boolean;
+  isDualColumn?: boolean;
 }>();
 const emit = defineEmits(["update:visible", "share"]);
 const { copy, isSupported } = useClipboard();
@@ -355,7 +380,7 @@ const globalStore = useGlobalStore();
 const subsStore = useSubsStore();
 const subsApi = useSubsApi();
 const settingsStore = useSettingsStore();
-const { appearanceSetting } = storeToRefs(settingsStore);
+const { appearanceSetting, githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
 
 const {
   isFlowFetching,
@@ -370,7 +395,7 @@ const { showNotify } = useAppNotifyStore();
 const { currentUrl: host } = useHostAPI();
 
 const displayName =
-  props[props.type].displayName || props[props.type]["display-name"];
+  props[props.type].displayName || props[props.type]["display-name"] || props[props.type].name;
 
 const name = props[props.type].name;
 const tag = props[props.type].tag;
@@ -382,14 +407,49 @@ const remarkText = computed(() => {
     return "";
   }
 });
+const shouldInlineRemarkInSecondLine = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && appearanceSetting.value.isSimpleMode
+    && remarkText.value
+    && appearanceSetting.value.isSimpleShowRemark
+  );
+});
+const isDualNonSimpleMode = computed(() => {
+  return Boolean(
+    props.isDualColumn
+    && !appearanceSetting.value.isSimpleMode,
+  );
+});
 const { flows } = storeToRefs(subsStore);
 
 const icon = computed(() => {
   return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon;
 });
+const avatarSize = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "36";
+  return props.isDualColumn ? "40" : "48";
+});
+const itemPadding = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "9px";
+  return props.isDualColumn ? "12px" : "16px";
+});
+const imageMarginTop = computed(() => {
+  if (appearanceSetting.value.isSimpleMode) return "5px";
+  return props.isDualColumn ? "2px" : "0";
+});
+const githubUrlRewriter = computed(() => {
+  return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+});
+const rewriteGithubUrl = (url?: string | null) => {
+  return githubUrlRewriter.value(url);
+};
 
 const isIconColor = computed(() => {
   return props[props.type].isIconColor !== false;
+});
+const iconFit = computed(() => {
+  return resolveImageFit(props[props.type].iconFit, appearanceSetting.value.iconFit);
 });
 
 const collectionDetail = computed(() => {
@@ -400,7 +460,7 @@ const collectionDetail = computed(() => {
   } else {
     const displayNameList = nameList.map((name) => {
       const sub = subsStore.getOneSub(name);
-      return sub?.displayName || sub?.["display-name"] || sub?.name;
+      return sub?.displayName || sub?.["display-name"] || sub?.name || `${name}(🚫)`;
     });
     if (nameList.length === 0) {
       return `${t("subPage.collectionItem.containTag")}: ${subTags.join(", ")}`;
@@ -414,6 +474,16 @@ const collectionDetail = computed(() => {
       ", ",
     )} | ${t("subPage.collectionItem.contain")}: ${displayNameList.join(", ")}`;
   }
+});
+const appendRemarkToSimpleDetailLine = (value: string) => {
+  if (!shouldInlineRemarkInSecondLine.value) {
+    return value;
+  }
+
+  return [value, remarkText.value].filter(Boolean).join(" · ");
+};
+const simpleCollectionDetailLine = computed(() => {
+  return appendRemarkToSimpleDetailLine(collectionDetail.value);
 });
 
 const flow = computed(() => {
@@ -472,7 +542,7 @@ const flow = computed(() => {
           : "";
         const expiresInfo = !expires
           ? ""
-          : `${dayjs.unix(expires).format("YYYY-MM-DD")}`;
+          : `${dayjs.unix(expires).format("YYYY-MM-DD HH:mm")}`;
         if (expiresInfo) {
           secondLine = secondLine
             ? `${secondLine} | ${expiresInfo}`
@@ -501,7 +571,7 @@ const flow = computed(() => {
           ? t("subPage.subItem.noExpiresInfo")
           : `${t("subPage.subItem.expires")}: ${dayjs
               .unix(expires)
-              .format("YYYY-MM-DD")}`;
+              .format("YYYY-MM-DD HH:mm")}`;
         if (target.hideExpire) {
           expiresInfo = "";
         }
@@ -541,7 +611,53 @@ const flow = computed(() => {
         };
       }
     }
+    return {
+      firstLine: t("subPage.subItem.noFlowInfo"),
+      secondLine: ``,
+    };
   }
+});
+const simpleSubDetailLine = computed(() => {
+  if (props.type !== "sub") {
+    return "";
+  }
+
+  if (typeof flow.value === "string") {
+    return appendRemarkToSimpleDetailLine(flow.value);
+  }
+
+  const baseLine = flow.value.secondLine
+    ? `${flow.value.firstLine} · ${flow.value.secondLine}`
+    : flow.value.firstLine;
+
+  return appendRemarkToSimpleDetailLine(baseLine);
+});
+const nonSimpleLineTitle = computed(() => {
+  return props.type === "sub" && typeof flow.value === "object"
+    ? flow.value.planName
+    : undefined;
+});
+const nonSimplePrimaryLine = computed(() => {
+  if (props.type === "collection") {
+    return collectionDetail.value;
+  }
+
+  if (typeof flow.value === "string") {
+    return flow.value;
+  }
+
+  return flow.value.firstLine;
+});
+const nonSimpleSecondLine = computed(() => {
+  if (props.type === "collection") {
+    return remarkText.value;
+  }
+
+  if (typeof flow.value === "string") {
+    return remarkText.value;
+  }
+
+  return [flow.value.secondLine, remarkText.value].filter(Boolean).join(" · ");
 });
 
 const closeCompare = () => {
@@ -581,32 +697,62 @@ const openAppUrl = () => {
   }
 };
 
-const compareSub = async () => {
+const fetchCompareData = async (data?: any) => {
   Toast.loading("生成节点对比中...", {
     id: "compare",
     cover: true,
     duration: 1500,
   });
-  const res = await useSubsApi().compareSub(
-    props.type,
-    props.sub ?? props.collection,
-  );
-  if (res?.data?.status === "success") {
-    compareData.value = res.data.data;
+  try {
+    const res = await subsApi.compareSub(
+      props.type,
+      data ?? props.sub ?? props.collection,
+    );
+    if (res?.data?.status === "success") {
+      compareData.value = res.data.data;
+    } else {
+      compareData.value = null;
+    }
+  } catch (e) {
+    console.error(e);
+    compareData.value = null;
+  }
+  await refreshSubFlowsIfNeeded()
+  
+  Toast.hide("compare");
+};
 
-    scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+const openComparePanel = () => {
+  scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+  globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop });
 
-    globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop });
+  document.querySelector("html").style["overflow-y"] = "hidden";
+  document.querySelector("html").style.height = "100%";
+  document.body.style.height = "100%";
+  document.body.style["overflow-y"] = "hidden";
+  (document.querySelector("#app") as HTMLElement).style["overflow-y"] = "hidden";
+  (document.querySelector("#app") as HTMLElement).style.height = "100%";
 
-    document.querySelector("html").style["overflow-y"] = "hidden";
-    document.querySelector("html").style.height = "100%";
-    document.body.style.height = "100%";
-    document.body.style["overflow-y"] = "hidden";
-    (document.querySelector("#app") as HTMLElement).style["overflow-y"] =
-      "hidden";
-    (document.querySelector("#app") as HTMLElement).style.height = "100%";
+  compareTableIsVisible.value = true;
+};
 
-    compareTableIsVisible.value = true;
+const compareSub = async () => {
+  await fetchCompareData();
+  openComparePanel();
+};
+
+const refreshCompare = async () => {
+  try {
+    // 重新获取最新订阅/组合订阅信息
+    const type = props.type === 'collection' ? 'collection' : 'sub';
+    const infoRes = await subsApi.getOne(type, name);
+    const latestData = (infoRes?.data?.status === 'success' ? infoRes.data.data : null) ?? (props.sub ?? props.collection);
+    await fetchCompareData(latestData);
+    // 同步更新 store，使进入编辑器时数据一致
+    subsStore.setOneData(props.type === 'collection' ? 'collections' : 'subs', name, latestData);
+  } catch (e) {
+    console.error(e);
+    compareData.value = null;
     Toast.hide("compare");
   }
 };
@@ -659,8 +805,12 @@ const handleGlobalClick = (event) => {
   document.removeEventListener('click', handleGlobalClick);
 };
 
-const onDeleteConfirm = async () => {
-  await subsStore.deleteSub(props.type, name);
+const isArchiveEnabled = computed(() => {
+  return env.value?.feature?.archive;
+});
+
+const onDeleteConfirm = async (mode: DeleteMode = "permanent") => {
+  await subsStore.deleteSub(props.type, name, mode);
   // Notify.danger(t('subPage.deleteSub.succeedNotify'), { duration: 1500 });
 };
 
@@ -716,7 +866,10 @@ const openPreviewPanel = () => {
       displayName,
       type: props.type,
       general: t("subPage.panel.general"),
-      notify: t("subPage.copyNotify.succeed"),
+      notify: t(`subPage.copyNotify.${shareBtnVisible.value ? "succeedWithShare" : "succeed"}`),
+      includeUnsupportedProxyLabel: t("subPage.panel.options.includeUnsupportedProxy"),
+      prettyYamlLabel: t("subPage.panel.options.prettyYaml"),
+      displayPreviewInWebPageLabel: t("moreSettingPage.displayPreviewInWebPage"),
       tipsTitle: t(`subPage.panel.tips.title`),
       tipsContent: `${t("subPage.panel.tips.content")}\n${t(
         "syncPage.addArtForm.includeUnsupportedProxy.tips.content",
@@ -738,6 +891,15 @@ const openPreviewPanel = () => {
 const shareBtnVisible = computed(() => {
   return env.value?.feature?.share;
 });
+
+const closeExpandedMenu = () => {
+  swipe.value.close();
+  swipeIsOpen.value = false;
+  itemMenuVisible.value = false;
+  if (moreAction.value) moreAction.value.style.transform = "rotate(0deg)";
+  document.removeEventListener("click", handleGlobalClick);
+};
+
 const onClickShareLink = async () => {
   const type = props.type;
   const data = props.type === "sub" ? props.sub : props.collection;
@@ -761,47 +923,47 @@ const onClickCopyConfig = async () => {
   await subsStore.fetchSubsData();
   Toast.hide("copyConfig");
   showNotify({ title: t("subPage.copyConfigNotify.succeed") });
+  closeExpandedMenu();
 };
-// const onClickExport = async () => {
-//   swipeController()
-//   let data: Sub | Collection;
-//   switch (props.type) {
-//     case "sub":
-//       data = JSON.parse(JSON.stringify(toRaw(props.sub)));
-//       break;
-//     case "collection":
-//       data = JSON.parse(JSON.stringify(toRaw(props.collection)));
-//       break;
-//   }
-//   data.name += `-exportedAt${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-
-//   Toast.loading(t("subPage.copyConfigNotify.loading"), { id: "exportConfig" });
-//   // await subsApi.createSub(props.type + "s", data);
-//   // await subsStore.fetchSubsData();
-//   Toast.hide("exportConfig");
-//   showNotify({ title: t("subPage.copyConfigNotify.succeed") });
-//   swipe.value.close();
-// };
+const onClickExport = async () => {
+  Toast.loading(t("subPage.exportConfigNotify.loading"), { id: "exportConfig" });
+  try {
+    downloadBlobResponse(
+      await subsApi.exportOne(props.type, name),
+      `sub-store_${props.type}_${name}.json`,
+    );
+    showNotify({ title: t("subPage.exportConfigNotify.succeed") });
+  } catch (e) {
+    console.error(e);
+    showNotify({
+      type: "danger",
+      title: t("subPage.exportConfigNotify.failed", {
+        e: e instanceof Error ? e.message : e,
+      }),
+    });
+  } finally {
+    Toast.hide("exportConfig");
+    closeExpandedMenu();
+  }
+};
 
 const onClickEdit = () => {
   router.push(`/edit/${props.type}s/${encodeURIComponent(name)}`);
 };
 
 const onClickDelete = () => {
-  Dialog({
-    title: t("subPage.deleteSub.title"),
-    content: createVNode(
-      "span",
-      {},
-      t("subPage.deleteSub.desc", { displayName }),
-    ),
-    onCancel: () => {},
-    onOk: onDeleteConfirm,
-    popClass: "auto-dialog",
-    cancelText: t("subPage.deleteSub.btn.cancel"),
-    okText: t("subPage.deleteSub.btn.confirm"),
-    closeOnPopstate: true,
-    lockScroll: false,
+  openManagedDeleteDialog({
+    enabled: isArchiveEnabled.value,
+    managedTitle: t("archivePage.liveDelete.title"),
+    managedContent: t("archivePage.liveDelete.desc", { displayName }),
+    managedCancelText: t("archivePage.liveDelete.btn.archive"),
+    managedOkText: t("archivePage.liveDelete.btn.permanent"),
+    legacyTitle: t("subPage.deleteSub.title"),
+    legacyContent: t("subPage.deleteSub.desc", { displayName }),
+    legacyCancelText: t("subPage.deleteSub.btn.cancel"),
+    legacyOkText: t("subPage.deleteSub.btn.confirm"),
+    onArchive: () => onDeleteConfirm("archive"),
+    onPermanent: () => onDeleteConfirm("permanent"),
   });
 };
 
@@ -815,7 +977,7 @@ const onClickCopyLink = async () => {
   } else {
     await copyFallback(url);
   }
-  showNotify({ title: t("subPage.copyNotify.succeed") });
+  showNotify({ title: t(`subPage.copyNotify.${shareBtnVisible.value ? "succeedWithShare" : "succeed"}`) });
 };
 
 const onClickRefresh = async () => {
@@ -828,19 +990,26 @@ const onClickRefresh = async () => {
   } catch (e) {
     console.error(e);
   }
-  try {
-    await subsStore.fetchFlows(ref([props.sub]).value);
-  } catch (e) {
-    console.error(e);
-  }
+  await refreshSubFlowsIfNeeded()
   Toast.hide("refresh");
   showNotify({ title: t("globalNotify.refresh.succeed") });
 };
+
+const refreshSubFlowsIfNeeded = async () => {
+  if (!props.sub) return
+  try {
+    await subsStore.fetchFlows([props.sub])
+  } catch (e) {
+    console.error(e)
+  }
+}
 </script>
 
 <style lang="scss" scoped>
 .sub-item-swipe {
   position: relative;
+  display: block;
+  min-width: 0;
 }
 
 
@@ -860,6 +1029,7 @@ const onClickRefresh = async () => {
   margin-right: auto;
   border-radius: var(--item-card-radios);
   display: flex;
+  min-width: 0;
   background: var(--card-color);
   cursor: pointer;
   position: relative;
@@ -872,7 +1042,7 @@ const onClickRefresh = async () => {
     border-radius: 12px;
 
     img {
-      object-fit: contain;
+      object-fit: var(--icon-fit, cover);
       border-radius: 10px;
     }
   }
@@ -880,30 +1050,49 @@ const onClickRefresh = async () => {
   > .sub-item-content {
     z-index: 1;
     flex: 1;
+    min-width: 0;
     line-height: 1.6;
+    display: flex;
+    flex-direction: column;
 
     .sub-item-title-wrapper {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 2px;
 
       .sub-item-title {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 1;
-        word-wrap: break-word;
-        word-break: break-all;
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
         overflow: hidden;
         font-size: 16px;
         color: var(--primary-text-color);
         vertical-align: middle;
+      }
+      .sub-item-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .app-url {
         font-size: 14px !important;
         margin: 0 2px;
       }
       .tag {
-        margin: 0 2px;
+        display: inline-flex;
+        flex: 0 0 auto;
+        margin: 0 1px;
+
+        :deep(.nut-tag) {
+          padding: 2px 3px;
+          font-size: 11px;
+          line-height: 1.2;
+        }
       }
       .sub-item-menu {
         position: relative;
@@ -911,18 +1100,21 @@ const onClickRefresh = async () => {
         // background: var(--card-color);
         padding: 4px 0;
         border-radius: var(--item-card-radios);
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
         &.simple-mode {
           position: relative;
           top: 8px;
         }
       }
       .compare-sub-link,
-      .share-sub-link,
+      .public-link-action,
       .copy-sub-link,
       .refresh-sub-flow {
         background-color: transparent;
         border: none;
-        padding: 0 8px;
+        padding: 0 6px;
         cursor: pointer;
         display: inline-flex;
         justify-content: center;
@@ -948,6 +1140,7 @@ const onClickRefresh = async () => {
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 3;
+      line-clamp: 3;
       word-wrap: break-word;
       word-break: break-all;
       overflow: hidden;
@@ -964,6 +1157,7 @@ const onClickRefresh = async () => {
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       word-wrap: break-word;
       word-break: break-all;
       overflow: hidden;
@@ -981,6 +1175,7 @@ const onClickRefresh = async () => {
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 1;
+      line-clamp: 1;
       word-wrap: break-word;
       word-break: break-all;
       overflow: hidden;
@@ -1004,6 +1199,43 @@ const onClickRefresh = async () => {
     width: 0%;
     height: 100%;
     background: var(--primary-color);
+  }
+}
+
+.sub-item-swipe.is-dual-column {
+  .sub-item-wrapper {
+    :deep(.nut-avatar) {
+      margin-right: 12px;
+    }
+
+    > .sub-item-content {
+      .sub-item-title-wrapper {
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .sub-item-title {
+        font-size: 15px;
+      }
+
+      .sub-item-detail {
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+      }
+
+      .sub-item-remark {
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+      }
+
+      .dual-non-simple-second-line {
+        min-height: 18px;
+      }
+
+      .sub-item-detail-isSimple {
+        max-width: 100%;
+      }
+    }
   }
 }
 

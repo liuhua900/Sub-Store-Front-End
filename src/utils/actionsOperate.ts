@@ -4,6 +4,7 @@ import FilterSelect from '@/views/editor/components/FilterSelect.vue';
 import Regex from '@/views/editor/components/Regex.vue';
 import HandleDuplicate from '@/views/editor/components/HandleDuplicate.vue';
 import Script from '@/views/editor/components/Script.vue';
+import AddProxiesFromSubscription from '@/views/editor/components/AddProxiesFromSubscription.vue';
 
 export const addItem = (
   form,
@@ -16,6 +17,7 @@ export const addItem = (
   const type = selectedOptions[0].value;
   const args = selectedOptions[0].args;
   const enabled = true;
+  const previewEnabled = type !== 'Response Transformer';
   const customName = selectedOptions[0].customName || "";
   const obj = {
     id,
@@ -26,7 +28,7 @@ export const addItem = (
     enabled,
   };
 
-  actionsChecked.push([id, true]);
+  actionsChecked.push([id, previewEnabled]);
   switch (type) {
     case 'Flag Operator':
     case 'Sort Operator':
@@ -66,6 +68,7 @@ export const addItem = (
       break;
     case 'Script Filter':
     case 'Script Operator':
+    case 'Response Transformer':
       obj.component = shallowRef(Script);
       form.process.push({
         id,
@@ -73,6 +76,20 @@ export const addItem = (
         args: args ?? {
           content: '',
           mode: 'link',
+        },
+        customName
+      });
+      break;
+    case 'Add Proxies From Subscription Operator':
+      obj.component = shallowRef(AddProxiesFromSubscription);
+      form.process.push({
+        id,
+        type,
+        args: args ?? {
+          sourceType: 'subscription',
+          sourceName: '',
+          includeUnsupportedProxy: false,
+          position: 'replace',
         },
         customName
       });

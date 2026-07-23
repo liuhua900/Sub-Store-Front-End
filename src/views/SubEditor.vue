@@ -1,13 +1,39 @@
 <template>
-  <div v-if="isDis">
   <div class="page-wrapper" @click="handleEditGlobalClick">
+    <div
+      v-if="editorTabsEnabled"
+      class="editor-section-tabs"
+      :style="{ top: navBarHeight }"
+    >
+      <div class="editor-section-tab-list" role="tablist">
+        <button
+          v-for="tab in SUB_EDITOR_TABS"
+          :key="tab"
+          type="button"
+          class="editor-section-tab"
+          :class="{ current: activeEditorTab === tab }"
+          role="tab"
+          :aria-selected="activeEditorTab === tab"
+          @click="activeEditorTab = tab"
+        >
+          {{ $t(`editorPage.subConfig.editorTabs.${tab}`) }}
+        </button>
+      </div>
+      <EditorGroupingTips />
+    </div>
     <!-- 基础表单 -->
-    <div class="form-block-wrapper">
-      <div v-if="appearanceSetting.isShowIcon" class="sticky-title-icon-container">
+    <div
+      v-show="isSubFormTabActive"
+      class="form-block-wrapper"
+    >
+      <div
+        v-if="appearanceSetting.isShowIcon && (!editorTabsEnabled || activeEditorTab === 'display')"
+        class="sticky-title-icon-container"
+      >
         <nut-image
           :class="{ 'sub-item-customer-icon': !form.isIconColor }"
           :src="subIcon"
-          fit="cover"
+          :fit="formIconFit"
           show-loading
           @click="showIconPopup"
         />
@@ -16,6 +42,7 @@
         <p>{{ $t(`editorPage.subConfig.basic.label`) }}</p>
       </div> -->
       <nut-form class="form" :model-value="form" ref="ruleForm">
+        <div v-show="!editorTabsEnabled || activeEditorTab === 'display'" class="editor-tab-content">
         <!-- name -->
         <nut-form-item
           required
@@ -118,6 +145,9 @@
             <nut-switch v-model="form.isIconColor" />
           </div>
         </nut-form-item>
+        <ImageFitPicker v-model="form.iconFit" :fallback-value="appearanceSetting.iconFit" />
+        </div>
+        <div v-show="!editorTabsEnabled || activeEditorTab === 'content'" class="editor-tab-content">
         <template v-if="editType === 'subs'">
           <!-- source -->
           <nut-form-item
@@ -188,24 +218,14 @@
               "
               type="text"
             /> -->
-            <button class="cimg-button" @click="isDis = false">
-              <font-awesome-icon icon="fa-solid fa-maximize" />
-              {{ $t(`editorPage.subConfig.basic.url.tips.fullScreenEdit`) }}
-              <!-- 测试 后续再改效果 -->
-            </button>
-            <input type="file" ref="fileInput" @change="fileChange" style="display: none">
-            <button class="cimg-button" @click="upload">
-              <font-awesome-icon icon="fa-solid fa-cloud-arrow-up" />
-              {{ $t(`editorPage.subConfig.basic.url.tips.importFromFile`) }}
-            </button>
-            <span class="button-tips" @click="contentTips">
-                <span class="tips">
-                  <span>{{$t(`editorPage.subConfig.basic.url.tips.label`)}}</span>
-                  <!-- <nut-icon name="tips"></nut-icon> -->
-                </span>
-              </span>
             <div style="margin-left: -15px; margin-right: -15px;max-height: 60vh;overflow: auto;">
-              <cmView :isReadOnly="false" id="SubEditer"/>
+              <cmView
+                :isReadOnly="false"
+                id="SubEditer"
+                :placeholder="$t(`editorPage.subConfig.basic.content.tips.content`)"
+                :editor-language="form.editorLanguage"
+                @update:editor-language="setEditorLanguage"
+              />
             </div>
           </nut-form-item>
           <!-- ua -->
@@ -313,12 +333,25 @@
               @click-right-icon="showTagPopup('linkTag')"
             />
           </nut-form-item>
-          <nut-form-item
-            :label="$t(`editorPage.subConfig.basic.subscriptions.label`)+ selectedSubs"
-            prop="subscriptions"
-            class="include-subs-wrapper"
-          >
-            <div v-if="tags && tags.length > 0" class="tag-check">
+          <nut-cell class="nut-form-item line include-subs-trigger" @click.stop="toggleManualSubscriptionsFold">
+            <view class="nut-cell__title nut-form-item__label">
+              {{ $t(`editorPage.subConfig.basic.subscriptions.label`) }}
+            </view>
+            <view class="nut-cell__value nut-form-item__body">
+              <view class="nut-form-item__body__slots">
+                <nut-input
+                  :model-value="selectedSubsDisplay"
+                  :border="false"
+                  class="nut-input-text include-subs-trigger-input"
+                  readonly
+                  input-align="right"
+                  :right-icon="manualSubscriptionsIsFold ? 'rect-right' : 'rect-down'"
+                />
+              </view>
+            </view>
+          </nut-cell>
+          <div v-show="!manualSubscriptionsIsFold" class="include-subs-wrapper">
+            <div v-show="!manualSubscriptionsIsFold && tags && tags.length > 0" class="tag-check">
               <div class="radio-wrapper">
                 <span
                   v-for="i in tags"
@@ -331,12 +364,18 @@
               <nut-checkbox v-model="subCheckbox" :indeterminate="subCheckboxIndeterminate" @click="subCheckboxClick"></nut-checkbox>
             </div>
             <nut-checkboxgroup
-              v-model="form.subscriptions"
-              class="subs-checkbox-wrapper"
+              v-show="!manualSubscriptionsIsFold"
+              v-model="visibleSelectedSubscriptions"
+              :class="[
+                'subs-checkbox-wrapper',
+                {
+                  'is-simple-mode': appearanceSetting.isSimpleMode,
+                  'is-dragging': isDragging,
+                },
+              ]"
             >
               <draggable
-                :list="filteredSubsSelectList"
-                :sort="true"
+                v-model="displayedSubsSelectList"
                 item-key="0"
                 animation="300"
                 :scroll-sensitivity="200"
@@ -349,7 +388,6 @@
               >
                 <template #item="{ element }">
                   <nut-checkbox
-                    v-show="shouldShowElement(element[3])"
                     :key="element[0]"
                     :label="element[0]"
                     text-position="left"
@@ -359,8 +397,9 @@
                       <nut-avatar
                         :class="{ 'sub-item-customer-icon': !element[4], 'icon': true  }"
                         v-if="element[2]"
-                        size="32"
-                        :url="element[2]"
+                        :size="chooserAvatarSize"
+                        :url="rewriteGithubUrl(element[2])"
+                        :style="{ '--icon-fit': element[5] }"
                         bg-color=""
                       ></nut-avatar>
                       <span class="sub-item">
@@ -375,7 +414,7 @@
                 </template>
               </draggable>
             </nut-checkboxgroup>
-            </nut-form-item>
+          </div>
             <nut-form-item
               :label="$t(`editorPage.subConfig.basic.subUserinfo.label`)"
               prop="subUserinfo"
@@ -394,6 +433,20 @@
               />
             </nut-form-item>
             <nut-form-item
+              prop="firstSubFlow"
+              class="ignore-failed-wrapper"
+            >
+              <template #label>
+                <span class="label-with-tip" @click="firstSubFlowTips">
+                  <span>{{ $t(`editorPage.subConfig.basic.firstSubFlow.label`) }}</span>
+                  <nut-icon name="tips"></nut-icon>
+                </span>
+              </template>
+              <div class="switch-wrapper">
+                <nut-switch v-model="form.firstSubFlow" />
+              </div>
+            </nut-form-item>
+            <nut-form-item
               :label="$t(`editorPage.subConfig.basic.proxy.label`)"
               prop="proxy"
             >
@@ -406,49 +459,77 @@
                 input-align="right"
                 left-icon="tips"
                 @click-left-icon="proxyTips"
-              />
-            </nut-form-item>
+            />
+          </nut-form-item>
         </template>
+
+        <nut-form-item prop="age-public-key">
+          <template #label>
+            <span class="label-with-tip" @click="ageOutputTips">
+              <span>{{ $t("ageKey.publicKey.label") }}</span>
+              <nut-icon name="tips"></nut-icon>
+            </span>
+          </template>
+          <div class="age-key-field">
+            <nut-input
+              :border="false"
+              class="nut-input-text"
+              v-model.trim="form['age-public-key']"
+              :placeholder="$t('ageKey.publicKey.placeholder')"
+              type="text"
+              input-align="right"
+            />
+            <AgeKeyHelper v-model="form['age-public-key']" />
+          </div>
+        </nut-form-item>
 
         <nut-form-item
           :label="$t(`editorPage.subConfig.basic.ignoreFailedRemoteSub.label`)"
+          class="failure-mode-trigger"
           prop="ignoreFailedRemoteSub"
-          class="ignore-failed-wrapper"
         >
-          <!-- <div class="switch-wrapper">
-            <nut-switch v-model="form.ignoreFailedRemoteSub" />
-          </div> -->
-          <div class="radio-wrapper">
-            <nut-radiogroup direction="horizontal" v-model="form.ignoreFailedRemoteSub">
-              <nut-radio shape="button" label="disabled">
-                {{ $t(`editorPage.subConfig.basic.ignoreFailedRemoteSub.disabled`) }}
-              </nut-radio>
-              <nut-radio shape="button" label="quiet">
-                {{ $t(`editorPage.subConfig.basic.ignoreFailedRemoteSub.quiet`) }}
-              </nut-radio>
-              <nut-radio shape="button" label="enabled">
-                {{ $t(`editorPage.subConfig.basic.ignoreFailedRemoteSub.enabled`) }}
-              </nut-radio>
-            
-            </nut-radiogroup>
-          </div>
+          <nut-input
+            :model-value="subFailureModeLabel"
+            :border="false"
+            class="nut-input-text failure-mode-input"
+            readonly
+            input-align="right"
+            right-icon="rect-right"
+            @click="openSubFailureModePicker"
+            @click-right-icon="openSubFailureModePicker"
+          />
         </nut-form-item>
+        </div>
       </nut-form>
     </div>
 
     <!-- 常用配置 -->
-    <CommonBlock v-if="appearanceSetting.isEditorCommon" />
+    <div
+      v-show="(!editorTabsEnabled || activeEditorTab === 'actions') && showEditorCommonBlock"
+      class="editor-tab-content editor-common-content"
+      :class="{ 'editor-tab-fixed-offset': editorTabsEnabled }"
+    >
+      <CommonBlock :default-folded="editorCommonDefaultFolded" />
+    </div>
 
     <!-- 节点操作 -->
-    <ActionBlock
-      ref="actionBlockRef"
-      :checked="actionsChecked"
-      :list="actionsList"
-      @updateCustomNameModeFlag="updateCustomNameModeFlag"
-      @addAction="addAction"
-      @deleteAction="deleteAction"
-      @toggleAction="toggleAction"
-    />
+    <div
+      v-show="!editorTabsEnabled || activeEditorTab === 'actions'"
+      class="editor-tab-content editor-actions-content"
+      :class="{
+        'editor-tab-fixed-offset': editorTabsEnabled && !showEditorCommonBlock,
+      }"
+    >
+      <ActionBlock
+        ref="actionBlockRef"
+        :checked="actionsChecked"
+        :list="actionsList"
+        @updateCustomNameModeFlag="updateCustomNameModeFlag"
+        @addAction="addAction"
+        @deleteAction="deleteAction"
+        @toggleAction="toggleAction"
+      />
+    </div>
   </div>
 
   <div class="bottom-btn-wrapper">
@@ -466,25 +547,27 @@
       {{ $t("editorPage.subConfig.btn.save") }}
     </nut-button>
   </div>
-</div>
-<div v-else style="width: 100%;max-height: 95vh;">
-    <button class="cimg-button" @click="isDis = true">
-      <font-awesome-icon icon="fa-solid fa-minimize" />
-      {{ $t(`editorPage.subConfig.basic.url.tips.fullScreenEditCancel`) }}
-    </button>
-    <cmView :isReadOnly="false" id="SubEditer" />
-  </div>
   <CompareTable
     v-if="compareTableIsVisible"
     :name="configName"
     :compareData="compareData"
+    :showRefresh="true"
     @closeCompare="closeCompare"
+    @refresh="refreshCompare"
   />
   <icon-popup
     v-model:visible="iconPopupVisible"
-    ref="iconPopupRef"
     @setIcon="setIcon">
   </icon-popup>
+  <DesktopPicker
+    v-model="selectedSubFailureMode"
+    v-model:visible="showSubFailureModePicker"
+    :columns="subFailureModeColumns"
+    :title="$t(`editorPage.subConfig.basic.ignoreFailedRemoteSub.label`)"
+    :cancel-text="$t(`editorPage.subConfig.sourceNamePicker.cancel`)"
+    :ok-text="$t(`editorPage.subConfig.sourceNamePicker.confirm`)"
+    @confirm="handleSubFailureModeConfirm"
+  />
   <tag-popup
     v-model:visible="tagPopupVisible"
     ref="tagPopupRef"
@@ -503,8 +586,21 @@ import { useAppNotifyStore } from "@/store/appNotify";
 import { useGlobalStore } from "@/store/global";
 import { useSettingsStore } from '@/store/settings';
 import { useSubsStore } from "@/store/subs";
+import { useSystemStore } from "@/store/system";
 import { addItem, deleteItem, toggleItem } from "@/utils/actionsOperate";
 import { actionsToProcess } from "@/utils/actionsToPorcess";
+import {
+  getEditorFoldState,
+  getEditorIsFolded,
+  getEditorRouteValue,
+  setEditorFoldState,
+  setEditorRouteValue,
+} from "@/utils/editorFoldState";
+import {
+  getEditorActiveTab,
+  setEditorActiveTab,
+} from "@/utils/editorTabState";
+import { getEditorTabForValidationErrors } from "@/utils/editorTabValidation";
 import { initStores } from "@/utils/initApp";
 import draggable from "vuedraggable";
 import CompareTable from "@/views/CompareTable.vue";
@@ -516,7 +612,11 @@ import HandleDuplicate from "@/views/editor/components/HandleDuplicate.vue";
 import Regex from "@/views/editor/components/Regex.vue";
 import Script from "@/views/editor/components/Script.vue";
 import IconPopup from "@/views/icon/IconPopup.vue";
+import ImageFitPicker from "@/components/ImageFitPicker.vue";
 import TagPopup from "@/components/TagPopup.vue";
+import AgeKeyHelper from "@/components/AgeKeyHelper.vue";
+import DesktopPicker from "@/components/DesktopPicker.vue";
+import EditorGroupingTips from "@/components/EditorGroupingTips.vue";
 import { Dialog, Toast } from "@nutui/nutui";
 import { storeToRefs } from "pinia";
 import {
@@ -533,11 +633,15 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import cmView from "@/views/editCode/cmView.vue";
 import { useCodeStore } from "@/store/codeStore";
+import { createGithubProxyUrlRewriter } from "@/utils/githubProxy";
+import { normalizeOptionalImageFit, resolveImageFit } from "@/utils/iconFit";
 const cmStore = useCodeStore();
-const isDis = ref(true)
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
+const SUB_EDITOR_TAB_STORAGE_KEY = "sub-editor-active-tab";
+const MANUAL_SUBSCRIPTIONS_FOLD_STORAGE_KEY = "manual-subscriptions-fold";
+const MANUAL_SUBSCRIPTIONS_GROUP_STORAGE_KEY = "manual-subscriptions-group";
 const subsApi = useSubsApi();
 const editType = route.params.editType as string;
 const configName = route.params.id as string;
@@ -545,8 +649,10 @@ const subsStore = useSubsStore();
 const { showNotify } = useAppNotifyStore();
 
 const globalStore = useGlobalStore();
+const systemStore = useSystemStore();
 const settingsStore = useSettingsStore();
-const { appearanceSetting } = storeToRefs(settingsStore);
+const { appearanceSetting, githubProxy, githubProxyRegex } = storeToRefs(settingsStore);
+const { navBarHeight } = storeToRefs(systemStore);
 
 const {
     bottomSafeArea,
@@ -555,19 +661,145 @@ const {
     // isIconColor 
   } = storeToRefs(globalStore);
 const padding = bottomSafeArea.value + "px";
+const githubUrlRewriter = computed(() => {
+  return createGithubProxyUrlRewriter(githubProxy.value, githubProxyRegex.value);
+});
+const rewriteGithubUrl = (url?: string | null) => {
+  return githubUrlRewriter.value(url);
+};
+const editorCommonDisplayMode = computed<EditorCommonDisplayMode>(() => {
+  return appearanceSetting.value.editorCommonDisplayMode || (appearanceSetting.value.isEditorCommon ? "expanded" : "hidden");
+});
+const showEditorCommonBlock = computed(() => editorCommonDisplayMode.value !== "hidden");
+const editorCommonDefaultFolded = computed(() => editorCommonDisplayMode.value === "collapsed");
+const routeConfigName = computed(() => route.params.id as string);
+const isEditMode = computed(() => routeConfigName.value !== "UNTITLED");
+const editorGroupingMode = computed<EditorGroupingMode>(() => appearanceSetting.value.editorGroupingMode || "edit-only");
+const editorTabsEnabled = computed(() => {
+  if (editorGroupingMode.value === "disabled") return false;
+  if (editorGroupingMode.value === "always") return true;
+  return isEditMode.value;
+});
+const SUB_EDITOR_TABS = ["display", "content", "actions"] as const;
+type SubEditorTab = (typeof SUB_EDITOR_TABS)[number];
+const SUB_EDITOR_PROP_TO_TAB: Partial<Record<string, SubEditorTab>> = {
+  name: "display",
+  displayName: "display",
+  remark: "display",
+  tag: "display",
+  icon: "display",
+  isIconColor: "display",
+  iconFit: "display",
+  source: "content",
+  url: "content",
+  content: "content",
+  passThroughUA: "content",
+  ua: "content",
+  subUserinfo: "content",
+  proxy: "content",
+  mergeSources: "content",
+  subscriptionTags: "content",
+  firstSubFlow: "content",
+  "age-public-key": "content",
+  ignoreFailedRemoteSub: "content",
+};
+const availableEditorTabs = computed(() => [...SUB_EDITOR_TABS]);
+const getSubEditorActiveTab = (
+  path: string,
+  tabs: readonly (typeof SUB_EDITOR_TABS)[number][],
+) => {
+  const defaultTab = tabs[0] || "display";
+
+  if (!isEditMode.value) {
+    return defaultTab;
+  }
+
+  return getEditorActiveTab(
+    SUB_EDITOR_TAB_STORAGE_KEY,
+    path,
+    tabs,
+    defaultTab,
+  );
+};
+const activeEditorTab = ref(getSubEditorActiveTab(route.path, availableEditorTabs.value));
+const isSubFormTabActive = computed(() => {
+  return !editorTabsEnabled.value || ["display", "content"].includes(activeEditorTab.value);
+});
+watch(
+  [() => route.path, availableEditorTabs, isEditMode],
+  ([path, tabs]) => {
+    activeEditorTab.value = getSubEditorActiveTab(path, tabs);
+  },
+  { immediate: true },
+);
+watch(activeEditorTab, (tab) => {
+  if (!isEditMode.value) return;
+
+  setEditorActiveTab(SUB_EDITOR_TAB_STORAGE_KEY, route.path, tab);
+});
+const setActiveSubEditorTab = (tab: SubEditorTab) => {
+  if (!editorTabsEnabled.value) return;
+
+  activeEditorTab.value = tab;
+};
+const focusValidationErrorTab = (errors: unknown) => {
+  const tab = getEditorTabForValidationErrors(errors, SUB_EDITOR_PROP_TO_TAB);
+  if (tab) {
+    setActiveSubEditorTab(tab);
+  }
+};
+const manualSubscriptionsDefaultFolded = computed(() => {
+  return (appearanceSetting.value.manualSubscriptionsDisplayMode || "collapsed") === "collapsed";
+});
+const manualSubscriptionsIsFold = ref(
+  getEditorIsFolded(
+    MANUAL_SUBSCRIPTIONS_FOLD_STORAGE_KEY,
+    route.path,
+    manualSubscriptionsDefaultFolded.value,
+  ),
+);
+const toggleManualSubscriptionsFold = () => {
+  manualSubscriptionsIsFold.value = !manualSubscriptionsIsFold.value;
+  setEditorFoldState(
+    MANUAL_SUBSCRIPTIONS_FOLD_STORAGE_KEY,
+    route.path,
+    manualSubscriptionsIsFold.value,
+  );
+};
+watch(
+  [() => route.path, manualSubscriptionsDefaultFolded],
+  ([path, defaultFolded]) => {
+    if (getEditorFoldState(MANUAL_SUBSCRIPTIONS_FOLD_STORAGE_KEY, path) === undefined) {
+      manualSubscriptionsIsFold.value = defaultFolded;
+      return;
+    }
+
+    manualSubscriptionsIsFold.value = getEditorIsFolded(
+      MANUAL_SUBSCRIPTIONS_FOLD_STORAGE_KEY,
+      path,
+      defaultFolded,
+    );
+  },
+);
+const chooserAvatarSize = computed(() => {
+  return appearanceSetting.value.isSimpleMode ? "28" : "32";
+});
+
+type SubSelectRow = [string, string, string | undefined, string[] | undefined, boolean, ImageFit];
 
   const sub = computed(() => subsStore.getOneSub(configName));
   const collection = computed(() => subsStore.getOneCollection(configName));
 
   
-  const subsSelectList = computed(() => {
+  const subsSelectList = computed<SubSelectRow[]>(() => {
     return subsStore.subs.map(item => {
       return [
         item.name,
         item.displayName || item['display-name'] || item.name,
         item.icon || (appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon),
         item.tag,
-        item.isIconColor !== false
+        item.isIconColor !== false,
+        resolveImageFit(item.iconFit, appearanceSetting.value.iconFit),
       ];
     });
   });
@@ -586,13 +818,15 @@ const padding = bottomSafeArea.value + "px";
     })
 
     let tags: any[] = Array.from(set)
-    if(tags.length === 0) return []
+    // if(tags.length === 0) return []
     tags = tags.map(i => ({ label: i, value: i }));
     const result = [{ label: t("specificWord.all"), value: "all" }, ...tags]
     if(hasUntagged.value) result.push({ label: t("specificWord.untagged"), value: "untagged" })
     return result
   });
   const tag = ref('all');
+  const manualSubscriptionsGroupInitialized = ref(false);
+  const manualSubscriptionsGroupTouched = ref(false);
   const tagPopupVisible = ref(false);
   const tagType = ref('tag'); // 标签tag | 关联订阅标签linkTag
   const tagPopupRef = ref(null);
@@ -614,15 +848,84 @@ const padding = bottomSafeArea.value + "px";
       form.tag = tag;      
     }
   };
-  const selectedSubs = computed(() => {
-    const subscriptions = form.subscriptions || [];
-    if(!Array.isArray(subscriptions) || subscriptions.length === 0) return `: ${t(`editorPage.subConfig.basic.subscriptions.empty`)}`
+const selectedSubs = computed(() => {
+  const subscriptions = form.subscriptions || [];
+  if(!Array.isArray(subscriptions) || subscriptions.length === 0) {
+    if (!Array.isArray(subsSelectList.value) || subsSelectList.value.length === 0) return `: ${t(`editorPage.subConfig.basic.subscriptions.empty`)}`
+    return `: ${t(`editorPage.subConfig.basic.subscriptions.none`)}`
+  }
     return `: ${subscriptions.map((name) => {
       const sub = subsStore.getOneSub(name);
       if(!sub) form.subscriptions = form.subscriptions.filter((n) => n !== name);
-      return sub?.displayName || sub?.["display-name"] || sub?.name;
+      return sub?.displayName || sub?.["display-name"] || sub?.name || `${name}(🚫)`;
     }).join(', ')}`
   });
+const selectedSubsDisplay = computed(() => selectedSubs.value.replace(/^:\s*/, ""));
+  const subFailureModeOptions = computed(() => {
+    const prefix = "editorPage.subConfig.basic.ignoreFailedRemoteSub";
+    return [
+      {
+        value: "disabled",
+        label: t(`${prefix}.disabled`),
+        note: t(`${prefix}.disabledNote`),
+      },
+      {
+        value: "enabled",
+        label: t(`${prefix}.enabled`),
+        note: t(`${prefix}.enabledNote`),
+      },
+      {
+        value: "quiet",
+        label: t(`${prefix}.quiet`),
+        note: t(`${prefix}.quietNote`),
+      },
+      {
+        value: "fallbackNotify",
+        label: t(`${prefix}.fallbackNotify`),
+        note: t(`${prefix}.fallbackNotifyNote`),
+      },
+      {
+        value: "fallbackQuiet",
+        label: t(`${prefix}.fallbackQuiet`),
+        note: t(`${prefix}.fallbackQuietNote`),
+      },
+    ];
+  });
+  const formatFailureModePickerText = (label: string, note?: string) => {
+    if (!note) return label;
+    return locale.value.startsWith("zh")
+      ? `${label}（${note}）`
+      : `${label} (${note})`;
+  };
+  const subFailureModeValue = computed(() => {
+    return form.ignoreFailedRemoteSub === false || form.ignoreFailedRemoteSub == null
+      ? "disabled"
+      : form.ignoreFailedRemoteSub;
+  });
+  const subFailureModeColumns = computed(() => {
+    return subFailureModeOptions.value.map((option) => ({
+      text: formatFailureModePickerText(option.label, option.note),
+      value: option.value,
+    }));
+  });
+  const subFailureModeLabel = computed(() => {
+    return subFailureModeOptions.value.find(
+      (option) => option.value === subFailureModeValue.value
+    )?.label || "";
+  });
+  const showSubFailureModePicker = ref(false);
+  const selectedSubFailureMode = ref<string[]>([]);
+  const openSubFailureModePicker = () => {
+    selectedSubFailureMode.value = [subFailureModeValue.value];
+    showSubFailureModePicker.value = true;
+  };
+  const handleSubFailureModeConfirm = ({ selectedValue }) => {
+    const nextValue =
+      selectedValue[0] ?? subFailureModeColumns.value[0]?.value ?? "disabled";
+    selectedSubFailureMode.value = [nextValue];
+    form.ignoreFailedRemoteSub = nextValue;
+    showSubFailureModePicker.value = false;
+  };
   const compareTableIsVisible = ref(false);
   usePopupRoute(compareTableIsVisible);
   const compareData = ref();
@@ -633,7 +936,6 @@ const ruleForm = ref<any>(null);
 const actionsChecked = reactive([]);
 const actionsList = reactive([]);
 const isget = ref(false);
-const fileInput = ref(null);
 const form = reactive<any>({
   name: "",
   displayName: "",
@@ -644,6 +946,7 @@ const form = reactive<any>({
   passThroughUA: false,
   icon: "",
   isIconColor: true,
+  iconFit: undefined,
   process: [
     {
       type: "Quick Setting Operator",
@@ -668,6 +971,7 @@ watchEffect(() => {
     switch (editType) {
       case "collections":
         form.subscriptions = [];
+        form.firstSubFlow = true;
         break;
       case "subs":
         form.source = "remote";
@@ -699,11 +1003,14 @@ watchEffect(() => {
   }
   form.ignoreFailedRemoteSub = ignoreFailedRemoteSub;
   form.passThroughUA = sourceData.passThroughUA;
+  form["age-public-key"] = sourceData["age-public-key"] || "";
   form.name = sourceData.name;
   form.displayName = sourceData.displayName || sourceData["display-name"];
   form.remark = sourceData.remark;
   form.icon = sourceData.icon;
   form.isIconColor = sourceData.isIconColor !== false;
+  form.iconFit = normalizeOptionalImageFit(sourceData.iconFit);
+  form.editorLanguage = sourceData.editorLanguage;
   form.process = newProcess;
   form.subUserinfo = sourceData.subUserinfo;
   form.proxy = sourceData.proxy;
@@ -719,6 +1026,7 @@ watchEffect(() => {
       form.subscriptions = Array.isArray(sourceData.subscriptions)
         ? [...sourceData.subscriptions]
         : [];
+      form.firstSubFlow = sourceData.firstSubFlow !== false;
       console.log('form.subscriptions ==>', form.subscriptions);
       break;
     case "subs":
@@ -743,7 +1051,7 @@ watchEffect(() => {
       const { type, id, customName, disabled } = item;
 
       if (!ignoreList.includes(type)) {
-        actionsChecked.push([id, true]);
+        actionsChecked.push([id, type !== "Response Transformer"]);
         const action = {
           type,
           id,
@@ -773,6 +1081,7 @@ watchEffect(() => {
             break;
           case "Script Filter":
           case "Script Operator":
+          case "Response Transformer":
             action.component = shallowRef(Script);
             break;
           default:
@@ -789,6 +1098,10 @@ watchEffect(() => {
 
 const addAction = (val) => {
   addItem(form, actionsList, actionsChecked, val, t);
+};
+
+const setEditorLanguage = (language) => {
+  form.editorLanguage = language || null;
 };
 
 const deleteAction = (id) => {
@@ -816,60 +1129,22 @@ const closeCompare = () => {
 
   router.back();
 };
-const upload = async() => {
+const fetchCompareData = async () => {
+  Toast.loading("生成节点对比中...", {
+    id: "compare",
+    cover: true,
+    duration: 1500,
+  });
   try {
-    fileInput.value.click()
-  } catch (e) {
-    console.error(e);
-  }
-}
-const fileChange = async (event) => {
-  const file = event.target.files[0];
-  if(!file) return
-  try {
-    const reader = new FileReader();
-    reader.readAsText(file);
-    reader.onload = () => {
-      cmStore.setEditCode("SubEditer", String(reader.result));
-    }
-
-    reader.onerror = e => {
-      throw e
-    }
-    
-  } catch (e) {
-    showNotify({
-      type: "danger",
-      title: '文件导入失败',
-    });
-    console.error(e);
-  }
-};
-const compare = () => {
-  ruleForm.value.validate().then(async ({ valid, errors }: any) => {
-    // 如果验证失败
-    if (!valid) {
-      Dialog({
-        title: t(`editorPage.subConfig.pop.errorTitle`),
-        content: errors[0].message,
-        popClass: "auto-dialog",
-        noCancelBtn: true,
-        okText: t(`editorPage.subConfig.pop.errorBtn`),
-        // @ts-ignore
-        closeOnClickOverlay: true,
-      });
-      return;
-    }
-
-    Toast.loading("生成节点对比中...", {
-      id: "compare",
-      cover: true,
-      duration: 1500,
-    });
     const data: any = JSON.parse(JSON.stringify(toRaw(form)));
     data.process = actionsToProcess(data.process, actionsList, ignoreList);
-    if (data.ignoreFailedRemoteSub === "disabled"){
+    if (data.ignoreFailedRemoteSub === "disabled") {
       data.ignoreFailedRemoteSub = false;
+    }
+    if (editType === "collections") {
+      data.firstSubFlow = data.firstSubFlow !== false;
+    } else {
+      delete data.firstSubFlow;
     }
     data.tag = [
       ...new Set(
@@ -887,8 +1162,6 @@ const compare = () => {
           .filter((item: string) => item.length)
       ),
     ];
-
-    // 过滤掉预览开关关闭的操作
     actionsChecked.forEach((item) => {
       if (!item[1]) {
         const index = data.process.findIndex((i) => i.id === item[0]);
@@ -897,31 +1170,59 @@ const compare = () => {
         }
       }
     });
-    // 当前如果已经存在改订阅配置，则更新订阅信息
-    if (configName !== "UNTITLED") {
-      await subsStore.fetchFlows(ref([data]).value);
-    }
+    // if (configName !== "UNTITLED") {
+    //   await subsStore.fetchFlows(ref([data]).value);
+    // }
     const type = editType === "collections" ? "collection" : "sub";
     const res = await subsApi.compareSub(type, data);
     if (res?.data?.status === "success") {
       compareData.value = res.data.data;
-
-      scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-
-      globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop });
-
-      document.querySelector("html").style["overflow-y"] = "hidden";
-      document.querySelector("html").style.height = "100%";
-      document.body.style.height = "100%";
-      document.body.style["overflow-y"] = "hidden";
-      (document.querySelector("#app") as HTMLElement).style["overflow-y"] =
-        "hidden";
-      (document.querySelector("#app") as HTMLElement).style.height = "100%";
-
-      compareTableIsVisible.value = true;
-      Toast.hide("compare");
+    } else {
+      compareData.value = null;
     }
+  } catch (e) {
+    console.error(e);
+    compareData.value = null;
+  }
+  Toast.hide("compare");
+};
+
+const openComparePanel = () => {
+  scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+  globalStore.setSavedPositions(route.path, { left: 0, top: scrollTop });
+
+  document.querySelector("html").style["overflow-y"] = "hidden";
+  document.querySelector("html").style.height = "100%";
+  document.body.style.height = "100%";
+  document.body.style["overflow-y"] = "hidden";
+  (document.querySelector("#app") as HTMLElement).style["overflow-y"] = "hidden";
+  (document.querySelector("#app") as HTMLElement).style.height = "100%";
+
+  compareTableIsVisible.value = true;
+};
+
+const compare = () => {
+  ruleForm.value.validate().then(async ({ valid, errors }: any) => {
+    if (!valid) {
+      focusValidationErrorTab(errors);
+      Dialog({
+        title: t(`editorPage.subConfig.pop.errorTitle`),
+        content: errors[0].message,
+        popClass: "auto-dialog",
+        noCancelBtn: true,
+        okText: t(`editorPage.subConfig.pop.errorBtn`),
+        // @ts-ignore
+        closeOnClickOverlay: true,
+      });
+      return;
+    }
+    await fetchCompareData();
+    openComparePanel();
   });
+};
+
+const refreshCompare = async () => {
+  await fetchCompareData();
 };
 
 const passThroughUAOn = computed(() => {
@@ -959,6 +1260,7 @@ const submit = () => {
     // 如果验证失败
     if (!valid) {
       isget.value = false;
+      focusValidationErrorTab(errors);
       Dialog({
         title: t(`editorPage.subConfig.pop.errorTitle`),
         content: errors[0].message,
@@ -977,6 +1279,22 @@ const submit = () => {
     });
     // 如果验证成功，开始保存/修改
     const data: any = JSON.parse(JSON.stringify(toRaw(form)));
+    const iconFit = normalizeOptionalImageFit(form.iconFit);
+    if (iconFit) {
+      data.iconFit = iconFit;
+    } else if (configName === "UNTITLED") {
+      delete data.iconFit;
+    } else {
+      data.iconFit = null;
+    }
+    const agePublicKey = `${data["age-public-key"] || ""}`.trim();
+    if (agePublicKey) {
+      data["age-public-key"] = agePublicKey;
+    } else if (configName === "UNTITLED") {
+      delete data["age-public-key"];
+    } else {
+      data["age-public-key"] = null;
+    }
     data.tag = [
       ...new Set(
         (data.tag || "")
@@ -997,6 +1315,11 @@ const submit = () => {
     data.process = actionsToProcess(data.process, actionsList, ignoreList);
     if (data.ignoreFailedRemoteSub === "disabled"){
       data.ignoreFailedRemoteSub = false;
+    }
+    if (editType === "collections") {
+      data.firstSubFlow = data.firstSubFlow !== false;
+    } else {
+      delete data.firstSubFlow;
     }
 
     console.log('submit.....\n', data);
@@ -1087,26 +1410,23 @@ const urlValidator = (val: string): Promise<boolean> => {
   // 图标
   const subIcon = computed(() => {
     if (form.icon) {
-      return form.icon
+      return rewriteGithubUrl(form.icon)
     } else {
-      return appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon
+      return rewriteGithubUrl(appearanceSetting.value.isDefaultIcon ? logoIcon : logoRedIcon)
     }
   })
+  const formIconFit = computed(() => resolveImageFit(form.iconFit, appearanceSetting.value.iconFit));
   const iconPopupVisible = ref(false)
-  const iconPopupRef = ref(null)
   const showIconPopup = () => {
     iconPopupVisible.value = true
   }
   const setIcon = (icon: any) => {
     form.icon = icon.url
   }
-  const iconTips = () => {
-    router.push(`/icon/collection`);
-  };
   const uaTips = () => {
     Dialog({
         title: '默认使用配置中的全局 UA',
-        content: '可尝试设置为 clash-verge/v1.5.1 等客户端的 User-Agent 让机场后端下发更多协议',
+        content: '可尝试设置为 clash-verge/v2.4.6, v2rayNG 等客户端的 User-Agent 让机场后端下发更多协议(可根据实际情况改成最新版本号)',
         popClass: 'auto-dialog',
         okText: 'OK',
         noCancelBtn: true,
@@ -1117,7 +1437,7 @@ const urlValidator = (val: string): Promise<boolean> => {
   const subUserinfoTips = () => {
     Dialog({
         title: '手动设置订阅流量信息',
-        content: '若填写链接, 则使用链接的响应体内容/响应头 subscription-userinfo 作为值.\n\n此项值的格式为:\n\nupload=1024; download=10240; total=102400; expire=4115721600; reset_day=14; plan_name=VIP1; app_url=http://a.com\n\n1. app_url, 订阅将有一个可点击跳转的按钮\n\n2. plan_name, hover 时将显示套餐名称\n\n3. reset_day, 流量重置剩余天数(若要设置周期性重置, 可查看订阅链接中的参数说明)\n\n⚠️ 注意: 手动设置的订阅流量信息会附加到订阅自己的流量信息之前. 若包含不合法的内容, 订阅将无法正常使用\n\n例如: http://官网.com 应编码为 http%3A%2F%2F%E5%AE%98%E7%BD%91.com',
+        content: '若填写链接, 则使用链接的响应体内容/响应头 subscription-userinfo 作为值. 链接支持 headers/noCache/headersCacheTtl 等参数.\n\n此项值的格式为:\n\nupload=1024; download=10240; total=102400; expire=4115721600; reset_day=14; plan_name=VIP1; app_url=http://a.com\n\n1. app_url, 订阅将有一个可点击跳转的按钮\n\n2. plan_name, hover 时将显示套餐名称\n\n3. reset_day, 流量重置剩余天数(若要设置周期性重置, 可查看订阅链接中的参数说明)\n\n⚠️ 注意: 手动设置的订阅流量信息会附加到订阅自己的流量信息之前. 若包含不合法的内容, 订阅将无法正常使用\n\n例如: http://官网.com 应编码为 http%3A%2F%2F%E5%AE%98%E7%BD%91.com',
         popClass: 'auto-dialog',
         okText: 'OK',
         noCancelBtn: true,
@@ -1125,10 +1445,25 @@ const urlValidator = (val: string): Promise<boolean> => {
         lockScroll: false,
       });
   };
+  const firstSubFlowTips = () => {
+    Dialog({
+        title: t(`editorPage.subConfig.basic.firstSubFlow.tips.title`),
+        content: t(`editorPage.subConfig.basic.firstSubFlow.tips.content`),
+        popClass: 'auto-dialog',
+        textAlign: 'left',
+        okText: t(`editorPage.subConfig.basic.firstSubFlow.tips.okText`),
+        noCancelBtn: true,
+        closeOnPopstate: true,
+        lockScroll: false,
+        onOk: () => {
+          window.open("https://telegram.me/zhetengsha/3070");
+        },
+      });
+  };
   const proxyTips = () => {
     Dialog({
         title: '通过代理/节点/策略获取订阅',
-        content: '1. Surge(参数 policy/policy-descriptor)\n\n可设置节点代理 例: Test = snell, 1.2.3.4, 80, psk=password, version=4\n\n或设置策略/节点 例: 国外加速\n\n2. Loon(参数 node)\n\nLoon 官方文档: \n\n指定该请求使用哪一个节点或者策略组（可以是节点名称、策略组名称，也可以是一个 Loon 格式的节点描述，如：shadowsocksr,example.com,1070,chacha20-ietf,"password",protocol=auth_aes128_sha1,protocol-param=test,obfs=plain,obfs-param=edge.microsoft.com）\n\n3. Stash(参数 headers["X-Surge-Policy"])/Shadowrocket(参数 headers.X-Surge-Policy)/QX(参数 opts.policy)\n\n可设置策略/节点\n\n4. Node.js 版(http/https/socks5):\n\n例: socks5://a:b@127.0.0.1:7890\n\n※ 优先级由高到低: 单条订阅, 组合订阅, 默认配置',
+        content: '1. Surge/Egern(参数 policy/policy-descriptor)\n\n可设置节点代理 例: Test = snell, 1.2.3.4, 80, psk=password, version=4\n\n或设置策略/节点 例: 国外加速\n\n2. Loon(参数 node)\n\nLoon 官方文档: \n\n指定该请求使用哪一个节点或者策略组（可以是节点名称、策略组名称，也可以是一个 Loon 格式的节点描述，如：shadowsocksr,example.com,1070,chacha20-ietf,"password",protocol=auth_aes128_sha1,protocol-param=test,obfs=plain,obfs-param=edge.microsoft.com）\n\n3. Stash(参数 headers["X-Surge-Policy"])/Shadowrocket(参数 headers.X-Surge-Policy)/QX(参数 opts.policy)\n\n可设置策略/节点\n\n4. Node.js 版(http/https/socks5):\n\n例: socks5://a:b@127.0.0.1:7890\n\n※ 优先级由高到低: 单条订阅, 组合订阅, 默认配置\n\n完整说明 请查看 https://telegram.me/zhetengsha/1843',
         popClass: 'auto-dialog',
         textAlign: 'left',
         okText: 'OK',
@@ -1161,10 +1496,10 @@ const urlValidator = (val: string): Promise<boolean> => {
         lockScroll: false,
       });
   };
-  const contentTips = () => {
+  const ageOutputTips = () => {
     Dialog({
-        title: t('editorPage.subConfig.basic.content.tips.title'),
-        content: t('editorPage.subConfig.basic.content.tips.content'),
+        title: t('ageKey.publicKey.tips.title'),
+        content: t('ageKey.publicKey.tips.content'),
         popClass: 'auto-dialog',
         textAlign: 'left',
         okText: 'OK',
@@ -1173,13 +1508,184 @@ const urlValidator = (val: string): Promise<boolean> => {
         lockScroll: false,
       });
   };
+  const normalizeTagList = (value: any): string[] => {
+    const source = Array.isArray(value) ? value : String(value || "").split(",");
+    return source
+      .map((item) => String(item).trim())
+      .filter((item) => item.length);
+  };
+  const getMatchingCollectionGroup = () => {
+    const collectionTags = normalizeTagList(form.tag);
+    if (collectionTags.length === 0) return "";
+
+    const subTagSet = new Set<string>();
+    subsSelectList.value.forEach(([, , , subTags]) => {
+      normalizeTagList(subTags).forEach((item) => subTagSet.add(item));
+    });
+
+    return collectionTags.find((item) => subTagSet.has(item)) || "";
+  };
+  const isManualSubscriptionsGroupAvailable = (group: string) => {
+    if (group === "all") return true;
+    if (!Array.isArray(tags.value) || tags.value.length === 0) return false;
+
+    return tags.value.some((item) => item.value === group);
+  };
+  const applyInitialManualSubscriptionsGroup = () => {
+    if (editType !== "collections") return;
+    if (!isInit.value) return;
+    if (manualSubscriptionsGroupInitialized.value || manualSubscriptionsGroupTouched.value) return;
+    if (tag.value !== "all") return;
+
+    const rememberedGroup = getEditorRouteValue(
+      MANUAL_SUBSCRIPTIONS_GROUP_STORAGE_KEY,
+      route.path,
+    );
+    if (rememberedGroup && isManualSubscriptionsGroupAvailable(rememberedGroup)) {
+      tag.value = rememberedGroup;
+      manualSubscriptionsGroupInitialized.value = true;
+      return;
+    }
+    if (rememberedGroup && subsSelectList.value.length === 0) return;
+
+    const matchedGroup = getMatchingCollectionGroup();
+    if (!matchedGroup) return;
+
+    tag.value = matchedGroup;
+    manualSubscriptionsGroupInitialized.value = true;
+  };
   const setTag = (current) => {
+    manualSubscriptionsGroupTouched.value = true;
     tag.value = current;
+    setEditorRouteValue(
+      MANUAL_SUBSCRIPTIONS_GROUP_STORAGE_KEY,
+      route.path,
+      current,
+    );
   };
   const shouldShowElement = (element) => {
     if(tag.value === 'all') return true
     if(tag.value === 'untagged') return !Array.isArray(element) || element.length === 0
     return element.includes(tag.value)
+  };
+  const ensureSubscriptions = (): string[] => {
+    if (!Array.isArray(form.subscriptions)) {
+      form.subscriptions = [];
+    }
+    return form.subscriptions;
+  };
+  const hasSameSubscriptions = (left: string[], right: string[]) => {
+    return left.length === right.length && left.every((name, index) => name === right[index]);
+  };
+  const skipNextDisplayedListSync = ref(false);
+  const replaceSubscriptions = (
+    nextSubscriptions: string[],
+    options?: { preserveDisplayedOrder?: boolean },
+  ) => {
+    const subscriptions = ensureSubscriptions();
+
+    if (hasSameSubscriptions(subscriptions, nextSubscriptions)) {
+      return;
+    }
+
+    if (options?.preserveDisplayedOrder) {
+      skipNextDisplayedListSync.value = true;
+    }
+
+    subscriptions.splice(0, subscriptions.length, ...nextSubscriptions);
+  };
+  const syncSubscriptionsFromRows = (rows: SubSelectRow[]) => {
+    const selectedSet = new Set(ensureSubscriptions());
+    const nextSubscriptions = rows
+      .filter(([name]) => selectedSet.has(name))
+      .map(([name]) => name);
+
+    replaceSubscriptions(nextSubscriptions, { preserveDisplayedOrder: true });
+  };
+  const selectedSubscriptions = computed(() => {
+    return Array.isArray(form.subscriptions) ? form.subscriptions : [];
+  });
+  const isRowVisibleByName = (name: string) => {
+    const row = subsSelectList.value.find((item) => item[0] === name);
+    return row ? shouldShowElement(row[3]) : false;
+  };
+  const orderedSubsSelectList = computed<SubSelectRow[]>(() => {
+    const selectedRows = selectedSubscriptions.value
+      .map(name => subsSelectList.value.find(item => item[0] === name))
+      .filter((item): item is SubSelectRow => Boolean(item));
+    const selectedSet = new Set(selectedRows.map(([name]) => name));
+
+    return [
+      ...selectedRows,
+      ...subsSelectList.value.filter(([name]) => !selectedSet.has(name)),
+    ];
+  });
+  const getCurrentVisibleRows = () => {
+    if (displayedSubsSelectList.value.length > 0) {
+      return displayedSubsSelectList.value;
+    }
+
+    return orderedSubsSelectList.value.filter((item) => shouldShowElement(item[3]));
+  };
+  const visibleSelectedSubscriptions = computed<string[]>({
+    get: () => {
+      return selectedSubscriptions.value.filter((name) => isRowVisibleByName(name));
+    },
+    set: (visibleSelectedNames) => {
+      const subscriptions = ensureSubscriptions();
+      const visibleRowOrder = getCurrentVisibleRows().map(([name]) => name);
+      const visibleSet = new Set(visibleRowOrder);
+      const visibleSelectedSet = new Set(visibleSelectedNames);
+      const visibleSelectedRowOrder = visibleRowOrder.filter((name) => visibleSelectedSet.has(name));
+      const nextSubscriptions = subscriptions.filter((name) => {
+        return !visibleSet.has(name) || visibleSelectedSet.has(name);
+      });
+      const findExistingIndex = (name: string) => nextSubscriptions.indexOf(name);
+
+      visibleSelectedRowOrder.forEach((name, index) => {
+        if (findExistingIndex(name) > -1) return;
+
+        const nextVisibleAnchor = visibleSelectedRowOrder
+          .slice(index + 1)
+          .find((candidate) => findExistingIndex(candidate) > -1);
+
+        if (nextVisibleAnchor) {
+          nextSubscriptions.splice(findExistingIndex(nextVisibleAnchor), 0, name);
+          return;
+        }
+
+        const previousVisibleAnchor = visibleSelectedRowOrder
+          .slice(0, index)
+          .reverse()
+          .find((candidate) => findExistingIndex(candidate) > -1);
+
+        if (previousVisibleAnchor) {
+          nextSubscriptions.splice(findExistingIndex(previousVisibleAnchor) + 1, 0, name);
+          return;
+        }
+
+        nextSubscriptions.push(name);
+      });
+
+      replaceSubscriptions(nextSubscriptions, { preserveDisplayedOrder: true });
+    },
+  });
+  const mergeVisibleOrder = <T>(
+    source: T[],
+    reorderedVisibleItems: T[],
+    shouldInclude: (item: T) => boolean,
+  ) => {
+    let visibleIndex = 0;
+
+    return source.map((item) => {
+      if (!shouldInclude(item)) {
+        return item;
+      }
+
+      const reorderedItem = reorderedVisibleItems[visibleIndex];
+      visibleIndex += 1;
+      return reorderedItem ?? item;
+    });
   };
   const subCheckboxIndeterminate = ref(true);
   const subCheckbox = ref(true);
@@ -1187,67 +1693,26 @@ const urlValidator = (val: string): Promise<boolean> => {
   //   console.log(`${!v} -> ${v}`)
   // };
   const subCheckboxClick = () => {
-    // 确保 form.subscriptions 存在
-    if (!form.subscriptions) {
-      form.subscriptions = [];
-    }
-    // const selected = toRaw(form.subscriptions) || []
-    const group = subsSelectList.value.filter(item => shouldShowElement(item[3])).map(item => item[0]) || []
+    const group = getCurrentVisibleRows().map(([name]) => name);
     if (subCheckboxIndeterminate.value) {
       console.log(`半选, 应变为全选`)  
-      for (let i = 0; i < group.length; i++) {
-        const index = form.subscriptions.indexOf(group[i])
-        if (index === -1) {
-          form.subscriptions.push(group[i])
-        }
-      }
+      visibleSelectedSubscriptions.value = group;
     } else if (!subCheckbox.value) {
       console.log(`全选, 应变为不选`)
-      // 用遍历与 form.subscriptions.slice 的方式, 去掉 form.subscriptions 中所有被 group 包含的元素
-      for (let i = 0; i < group.length; i++) {
-        const index = form.subscriptions.indexOf(group[i])
-        if (index > -1) {
-          form.subscriptions.splice(index, 1)
-        }
-      }
+      visibleSelectedSubscriptions.value = [];
       // subCheckbox.value = !subCheckbox.value
     } else {
       console.log(`不选, 应变为全选`)
-      for (let i = 0; i < group.length; i++) {
-        const index = form.subscriptions.indexOf(group[i])
-        if (index === -1) {
-          form.subscriptions.push(group[i])
-        }
-      }
+      visibleSelectedSubscriptions.value = group;
       // subCheckbox.value = !subCheckbox.value
     }
     subCheckboxIndeterminate.value = false
   };
-  const filteredSubsSelectList = ref([]);
-
-  const updateFilteredSubsList = () => {
-    if (!subsSelectList.value?.length) {
-      filteredSubsSelectList.value = [];
-      return;
-    }
-    
-    form.subscriptions = form.subscriptions || [];
-    
-    // 当选中"全部"标签时，将已选中的订阅提到最前面；否则保持原顺序
-    filteredSubsSelectList.value = tag.value === 'all'
-      ? [
-          // 已选中的（按选中顺序）
-          ...form.subscriptions.map(name => subsSelectList.value.find(item => item[0] === name)).filter(Boolean),
-          // 未选中的
-          ...subsSelectList.value.filter(item => !form.subscriptions.includes(item[0]))
-        ]
-      : [...subsSelectList.value];
-  };
-  // 监听 tag、subsSelectList 和 subsStore.subs 的变化时更新列表
-  watch([tag, subsSelectList, () => subsStore.subs], () => {
-    updateFilteredSubsList();
-  }, { immediate: true, deep: true });
+  const displayedSubsSelectList = ref<SubSelectRow[]>([]);
   const isDragging = ref(false);
+  const syncDisplayedSubsSelectList = () => {
+    displayedSubsSelectList.value = orderedSubsSelectList.value.filter((item) => shouldShowElement(item[3]));
+  };
 
   const onStartDrag = () => {
     console.log("开始拖拽");
@@ -1256,38 +1721,32 @@ const urlValidator = (val: string): Promise<boolean> => {
 
   const onEndDrag = () => {
     console.log("结束拖拽");
+    const mergedRows = mergeVisibleOrder(
+      orderedSubsSelectList.value,
+      displayedSubsSelectList.value,
+      (item) => shouldShowElement(item[3]),
+    );
     isDragging.value = false;
-  
-    // 获取当前过滤视图中可见的订阅顺序
-    const visibleOrder = filteredSubsSelectList.value
-      .filter(item => shouldShowElement(item[3]))
-      .map(item => item[0]);
-    
-    const newSubscriptions = [];
-    
-    // 确保 form.subscriptions 存在
-    if (!form.subscriptions) {
-      form.subscriptions = [];
-    }
-    
-    // 先按新顺序添加当前过滤列表中已选中的订阅
-    visibleOrder.forEach(name => {
-      if (form.subscriptions.includes(name)) {
-        newSubscriptions.push(name);
-      }
-    });
-    
-    // 添加不在当前过滤列表中但已选中的订阅（保持原有顺序）
-    form.subscriptions.forEach(name => {
-      if (!visibleOrder.includes(name)) {
-        newSubscriptions.push(name);
-      }
-    });
-    form.subscriptions.splice(0, form.subscriptions.length, ...newSubscriptions);
-    console.log("更新后的 form.subscriptions:", form.subscriptions);
+    syncSubscriptionsFromRows(mergedRows);
+    syncDisplayedSubsSelectList();
   };
-  watch([tag, form.subscriptions, subsSelectList], () => {
-    const selected = toRaw(form.subscriptions || []) || []
+  watch([() => form.tag, subsSelectList, tags, isInit], () => {
+    applyInitialManualSubscriptionsGroup();
+  }, { immediate: true, deep: true });
+  watch([tag, subsSelectList], () => {
+    if (isDragging.value) return;
+    syncDisplayedSubsSelectList();
+  }, { immediate: true });
+  watch(selectedSubscriptions, () => {
+    if (isDragging.value) return;
+    if (skipNextDisplayedListSync.value) {
+      skipNextDisplayedListSync.value = false;
+      return;
+    }
+    syncDisplayedSubsSelectList();
+  }, { deep: true });
+  watch([tag, selectedSubscriptions, subsSelectList], () => {
+    const selected = toRaw(selectedSubscriptions.value) || []
     const group = subsSelectList.value.filter(item => shouldShowElement(item[3])).map(item => item[0]) || []
     // 1. group 中不包含 selected 中的任何元素, subCheckbox 为 false, subCheckboxIndeterminate 为 false
     // 2. group 中包含 selected 中的任意元素, subCheckbox 为 true, subCheckboxIndeterminate 为 true
@@ -1305,7 +1764,7 @@ const urlValidator = (val: string): Promise<boolean> => {
       subCheckbox.value = false
       subCheckboxIndeterminate.value = false
     }
-  }, { immediate: true });
+  }, { immediate: true, deep: true });
   // const subCheckboxIndeterminate = computed(() => {
   //   const selected = toRaw(form.subscriptions)
   //   const currentGroup = subsSelectList.value.filter(item => shouldShowElement(item[3])).map(item => item[0])
@@ -1347,9 +1806,23 @@ const handleEditGlobalClick = () => {
 }
 .radio-wrapper {
   display: flex;
-  // justify-content: start;
   flex-wrap: wrap;
   justify-content: flex-end;
+
+  :deep(.nut-radiogroup) {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 5px;
+  }
+
+  :deep(.nut-radio) {
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    line-height: 1;
+  }
 
   :deep(.nut-radio__button.false) {
     background: var(--divider-color);
@@ -1357,7 +1830,14 @@ const handleEditGlobalClick = () => {
     color: var(--second-text-color);
   }
   :deep(.nut-radio__button) {
-    padding: 5px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 30px;
+    padding: 0 9px;
+    line-height: 18px;
+    white-space: nowrap;
   }
 }
 
@@ -1410,6 +1890,30 @@ const handleEditGlobalClick = () => {
         // color: #fa2c19;
       }
     }
+  }
+  .label-with-tip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+
+    :deep(.nut-icon) {
+      color: inherit;
+    }
+
+    :deep(.nut-icon-tips) {
+      display: inline-flex;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 20px;
+    }
+  }
+  :deep(.nut-form-item__label) {
+    width: auto;
   }
   :deep(.nut-input-text){
     .nut-input-inner {
@@ -1468,8 +1972,64 @@ const handleEditGlobalClick = () => {
   }
 }
 
+.failure-mode-input {
+  cursor: pointer;
+
+  :deep(.nut-input),
+  :deep(.nut-input-value),
+  :deep(.nut-input-inner),
+  :deep(.nut-input-box),
+  :deep(.input-text),
+  :deep(.nut-input__text--readonly),
+  :deep(.nut-input-right-icon) {
+    cursor: pointer;
+  }
+}
+
+.failure-mode-trigger {
+  :deep(.nut-form-item__body),
+  :deep(.nut-cell__value) {
+    cursor: pointer;
+  }
+}
+
+.include-subs-trigger {
+  cursor: pointer;
+
+  :deep(.nut-form-item__label),
+  :deep(.nut-form-item__body),
+  :deep(.nut-cell__title),
+  :deep(.nut-cell__value),
+  :deep(.nut-input),
+  :deep(.nut-input-value),
+  :deep(.nut-input-inner),
+  :deep(.nut-input-right-icon),
+  :deep(input) {
+    cursor: pointer;
+  }
+
+  :deep(.include-subs-trigger-input .nut-input-inner .nut-input-right-icon) {
+    margin-left: 14px;
+  }
+}
+
+.age-key-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
 .include-subs-wrapper {
+  display: flex;
   flex-direction: column;
+  padding: 0 24px 12px;
+
+  .tag-check {
+    flex: 1;
+    min-width: 0;
+  }
 
   .radio-wrapper {
     display: flex;
@@ -1504,6 +2064,54 @@ const handleEditGlobalClick = () => {
 
   .subs-checkbox-wrapper {
     flex-direction: row-reverse;
+
+    &.is-dragging {
+      .subs-checkbox,
+      .sub-img-wrapper,
+      .sub-img-wrapper * {
+        -webkit-user-select: none;
+        user-select: none;
+      }
+    }
+
+    &.is-simple-mode {
+      .subs-checkbox {
+        padding: 10px 0 0 0;
+
+        &:not(:last-child) {
+          padding: 10px 0;
+        }
+
+        .sub-img-wrapper {
+          font-size: 13px;
+
+          .icon {
+            margin-right: 6px;
+          }
+
+          .sub-item {
+            margin: -3px 0 0 -3px;
+
+            .name {
+              margin: 3px 0 0 3px;
+            }
+
+            .tag {
+              margin: 3px 0 0 3px;
+            }
+          }
+
+          .sub-item-customer-icon {
+            margin-right: 8px;
+          }
+
+          .drag-handle {
+            font-size: 14px;
+            padding: 6px;
+          }
+        }
+      }
+    }
 
     .subs-checkbox {
       justify-content: space-between;
@@ -1554,7 +2162,7 @@ const handleEditGlobalClick = () => {
           margin-right: 12px;
 
           :deep(img) {
-            object-fit: contain;
+            object-fit: var(--icon-fit, cover);
 
             &:not(.nut-icon__img) {
               filter: brightness(var(--img-brightness));

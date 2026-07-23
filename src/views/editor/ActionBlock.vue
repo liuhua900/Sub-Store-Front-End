@@ -1,7 +1,7 @@
 <template>
   <div class="form-block-wrapper">
-    <div v-if="sourceType !== 'file'" class="sticky-title-wrapper actions-title-wrapper">
-      <p>{{ $t(`editorPage.subConfig.actions.label`) }}</p>
+    <div class="sticky-title-wrapper actions-title-wrapper">
+      <p>{{ $t(actionsTitleKey) }}</p>
       <font-awesome-icon
         v-if="isCollapsed"
         @click.stop="setCollapsed(false)"
@@ -14,7 +14,7 @@
         class="toggle fa-toggle"
         icon="fa-solid fa-toggle-off"
       />
-      <button @click="popActionsHelp">
+      <button v-if="sourceType !== 'file'" @click="popActionsHelp">
         <font-awesome-icon icon="fa-solid fa-circle-question" />
         {{ $t(`editorPage.subConfig.basic.nodeActionsHelp`) }}
       </button>
@@ -38,7 +38,7 @@
         ghostClass: 'ghost',
         chosenClass: 'chosen',
         dragClass: 'dragging',
-        delay: 150,
+        delay: 0,
         handle: '.drag-handler',
       }"
       @end="drag = false"
@@ -113,12 +113,50 @@
                 ></nut-checkbox>
                 <span @click="toggleActionSwitch(element.id)">{{ $t(`editorPage.subConfig.actions.enable`) }}</span>
               </div>
-              <div class="preview-switch">
+              <div
+                v-if="isPreviewSwitchDisabled(element)"
+                class="preview-switch-popover"
+                @mouseenter="showPreviewTooltip(element.id)"
+                @mouseleave="hidePreviewTooltip(element.id)"
+                @focusin="showPreviewTooltip(element.id)"
+                @focusout="hidePreviewTooltip(element.id)"
+              >
+                <nut-popover
+                  v-model:visible="previewTooltipVisible[element.id]"
+                  location="top"
+                  theme="dark"
+                  custom-class="preview-switch-nut-popover"
+                  :overlay="false"
+                  :close-on-click-outside="true"
+                >
+                  <template #reference>
+                    <div
+                      class="preview-switch preview-switch--disabled"
+                      @click.stop="showPreviewTooltip(element.id)"
+                    >
+                      <nut-checkbox
+                        v-model="getItem(element.id)[1]"
+                        disabled
+                        class="my-switch"
+                      ></nut-checkbox>
+                      <span>
+                        {{ $t(`editorPage.subConfig.basic.previewSwitch`) }}
+                      </span>
+                    </div>
+                  </template>
+                  <template #content>
+                    <span class="preview-switch-tooltip">
+                      {{ $t(`editorPage.subConfig.basic.previewDisabledResponseOnlyTips`) }}
+                    </span>
+                  </template>
+                </nut-popover>
+              </div>
+              <div v-else class="preview-switch">
                 <nut-checkbox
                   v-model="getItem(element.id)[1]"
                   class="my-switch"
                 ></nut-checkbox>
-                <span @click="togglePreviewSwitch(element.id)">
+                <span @click="togglePreviewSwitch(element)">
                   {{ $t(`editorPage.subConfig.basic.previewSwitch`) }}
                 </span>
               </div>
@@ -158,13 +196,28 @@
       > -->
     <!-- </button> -->
 
-    <nut-cell class="list-group-itemsa" aria-hidden="true">
+    <nut-cell
+      class="list-group-itemsa"
+      :class="{ 'list-group-itemsa--compact': isActionButtonsCompact }"
+    >
       <div class="list-group-item-titlesa">
-        <!-- <div class="title-text left"> -->
-        <span>{{
-          $t(`editorPage.subConfig.actions.addAction.title`)
-        }}</span>
-        <font-awesome-icon v-if="sourceType !== 'file'"  @click="popActionsHelp" icon="fa-solid fa-circle-question" />
+        <div class="add-action-title">
+          <span>{{
+            $t(`editorPage.subConfig.actions.addAction.title`)
+          }}</span>
+          <font-awesome-icon v-if="sourceType !== 'file'"  @click="popActionsHelp" icon="fa-solid fa-circle-question" />
+        </div>
+        <label class="action-buttons-mode-select">
+          <select v-model="actionButtonsDisplayMode" :aria-label="$t(`moreSettingPage.actionButtons.title`)">
+            <option
+              v-for="mode in actionButtonsDisplayModes"
+              :key="mode"
+              :value="mode"
+            >
+              {{ $t(`moreSettingPage.actionButtons.${mode}`) }}
+            </option>
+          </select>
+        </label>
       </div>
       <div class="horizontal-button-container">
         <button v-for="(item, index) in columns" :key="index" @click="onButtonClick(item)" class="custom-button">
@@ -175,6 +228,17 @@
         </button>
       </div>
     </nut-cell>
+    <div v-if="actionTip" class="action-block-tip">
+      <span>{{ actionTip }}</span>
+      <a
+        v-if="actionTipUrl"
+        :href="actionTipUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {{ actionTipLinkText }}
+      </a>
+    </div>
     <nut-form v-if="showPasteboard" class="paste-action">
       <nut-form-item>
         <nut-textarea
@@ -198,51 +262,98 @@
 </template>
 
 <script lang="ts" setup>
-// import { useMousePicker } from '@/hooks/useMousePicker';
 import i18nFile from '@/locales/zh';
 import { Dialog, Toast } from '@nutui/nutui';
 import { ref, inject, reactive, watch, nextTick, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import Draggable from 'vuedraggable';
-import { useClipboard } from '@vueuse/core';
+import { storeToRefs } from 'pinia';
+import { useClipboard, useMediaQuery } from '@vueuse/core';
 import useV3Clipboard from "vue-clipboard3";
+import { isMihomoConfigFileType } from "@/utils/fileType";
+import { useSettingsStore } from '@/store/settings';
+import { WIDE_SCREEN_NARROW_MODE_QUERY } from '@/hooks/useWideScreenNarrowMode';
 // const { copy, isSupported, text } = useClipboard({ read: true });
 const { copy, isSupported } = useClipboard();
 const { toClipboard: copyFallback } = useV3Clipboard();
 
 const { t } = useI18n();
+const settingsStore = useSettingsStore();
+const { appearanceSetting } = storeToRefs(settingsStore);
 const pasteboard = ref("");
 const showPasteboard = ref(false);
 const drag = ref(true);
 const isCollapsed = ref(localStorage.getItem('actions-block-collapsed') === '1');
 const collapsedElements = ref([]);
-const form = inject<Sub | Collection>('form');
+const form = inject<any>('form');
 // 列表渲染的数据
 // 预览开关数组，数组第一项为 id，对应 list 中的同 id 项目，控制该 id 开启关闭预览
-const { checked, list, sourceType } = defineProps<{
+const { checked, list, sourceType, actionTip, actionTipUrl, actionTipLinkText } = defineProps<{
   checked: Array<[string, boolean]>;
   list: ActionModuleProps[];
   sourceType?: string;
+  actionTip?: string;
+  actionTipUrl?: string;
+  actionTipLinkText?: string;
 }>();
 
 
-// 通过 i18n 构造 picker 选项
-// const showAddPicker = ref(false);
-// const showAddPicker = ref(true);
-const types = Object.keys(i18nFile.editorPage.subConfig.nodeActions);
-let items = types.map(type => {
+const ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR = 'Add Proxies From Subscription Operator';
+const FILE_ACTION_TYPES = [
+  ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR,
+  'Script Operator',
+  'Response Transformer',
+];
+const isMihomoConfigFile = computed(
+  () => sourceType === 'file' && isMihomoConfigFileType(form?.type),
+);
+const actionsTitleKey = computed(() =>
+  sourceType === 'file'
+    ? 'editorPage.subConfig.actions.fileLabel'
+    : 'editorPage.subConfig.actions.label',
+);
+const isWideScreen = useMediaQuery(WIDE_SCREEN_NARROW_MODE_QUERY);
+const actionButtonsDisplayModes: ActionButtonsDisplayMode[] = ['responsive', 'compact', 'loose'];
+const actionButtonsDisplayMode = computed<ActionButtonsDisplayMode>({
+  get: () => appearanceSetting.value.actionButtonsDisplayMode || 'responsive',
+  set: (actionButtonsDisplayMode) => {
+    settingsStore.changeAppearanceSetting({
+      appearanceSetting: {
+        ...appearanceSetting.value,
+        actionButtonsDisplayMode,
+      },
+    });
+  },
+});
+const isActionButtonsCompact = computed(() => {
+  if (actionButtonsDisplayMode.value === 'compact') return true;
+  if (actionButtonsDisplayMode.value === 'loose') return false;
+
+  return !isWideScreen.value;
+});
+
+const allItems = computed(() => Object.keys(i18nFile.editorPage.subConfig.nodeActions).map(type => {
   return {
     text: t(`editorPage.subConfig.nodeActions['${type}'].label`),
     value: type,
   };
+}));
+
+const columns = computed(() => {
+  if (sourceType !== 'file') {
+    return allItems.value.filter(item => item.value !== ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR);
+  }
+
+  const fileActionTypes = isMihomoConfigFile.value
+    ? FILE_ACTION_TYPES
+    : FILE_ACTION_TYPES.filter(
+      type => type !== ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR,
+    );
+
+  return fileActionTypes
+    .map(type => allItems.value.find(item => item.value === type))
+    .filter(Boolean);
 });
-
-if (sourceType === 'file') {
-  items = items.filter(item => ['Script Operator'].includes(item.value));
-}
-const columns = ref(items);
-// useMousePicker();
-
 if(isCollapsed.value) {
   collapsedElements.value = list.map((item) => item.id);
 } else {
@@ -326,6 +437,12 @@ const paste = async () => {
     if (item?.source !== sourceType) {
       throw new Error('文件操作与订阅操作不通用')
     }
+    if (
+      item.data.type === ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR &&
+      !isMihomoConfigFile.value
+    ) {
+      throw new Error('该操作仅适用于 mihomo 配置文件')
+    }
     const data = [{
       ...item.data,
       value: item.data.type,
@@ -357,12 +474,21 @@ const emit = defineEmits(['addAction', 'deleteAction', 'updateCustomNameModeFlag
 const toggleActionSwitch = (id: string) => {
   emit('toggleAction', id);
 };
+const isPreviewSwitchDisabled = (element) => element.type === 'Response Transformer';
+const previewTooltipVisible = reactive<Record<string, boolean>>({});
+const showPreviewTooltip = (id: string) => {
+  previewTooltipVisible[id] = true;
+};
+const hidePreviewTooltip = (id: string) => {
+  previewTooltipVisible[id] = false;
+};
 // 获取绑定的对应预览开关
 const getItem = (id: string) => {
   return checked.find(item => item[0] === id);
 };
-const togglePreviewSwitch = (id: string) => {
-  const item = getItem(id);
+const togglePreviewSwitch = (element) => {
+  if (isPreviewSwitchDisabled(element)) return;
+  const item = getItem(element.id);
   return item[1] = !item[1];
 };
 
@@ -412,7 +538,8 @@ const pop = (type: string, tipsDes: string) => {
 };
 
 // 操作名称自定义
-const findNameByType = (type) => items.find((item) => item.value === type).text;
+const findNameByType = (type) =>
+  allItems.value.find((item) => item.value === type)?.text || type;
 const generateEditNameItem = (element) => {
   const { tipsDes, component, ...values } = element;
   return {
@@ -686,6 +813,37 @@ defineExpose({ exitAllEditName });
             font-size: 16px;
           }
         }
+        &--disabled {
+          color: var(--comment-text-color);
+          opacity: 0.48;
+          filter: grayscale(1);
+          cursor: help;
+
+          span {
+            color: var(--comment-text-color);
+          }
+        }
+      }
+      .preview-switch-popover {
+        display: flex;
+        align-items: center;
+
+        :deep(.nut-popover-wrapper) {
+          display: flex;
+          align-items: center;
+        }
+
+        :deep(.preview-switch-nut-popover) {
+          position: fixed;
+          z-index: 2200;
+        }
+      }
+      .preview-switch-tooltip {
+        display: block;
+        max-width: 220px;
+        padding: 2px 4px;
+        line-height: 1.45;
+        white-space: normal;
       }
       .icon-button {
         padding: 0 8px;
@@ -725,9 +883,19 @@ defineExpose({ exitAllEditName });
   box-shadow: none;
 
   .list-group-item-titlesa {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     color: var(--comment-text-color);
     border-bottom: 1px solid var(--divider-color);
     padding: 1px 0 12px 12px;
+
+    .add-action-title {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+    }
 
     span {
       margin-right: 6px;
@@ -736,6 +904,74 @@ defineExpose({ exitAllEditName });
     svg {
       color: var(--unimportant-icon-color);
     }
+  }
+
+  .action-buttons-mode-select {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+    height: 24px;
+    color: var(--comment-text-color);
+    cursor: pointer;
+
+    select {
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--comment-text-color);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 20px;
+      text-align: right;
+      text-align-last: right;
+    }
+  }
+
+  &--compact {
+    .list-group-item-titlesa {
+      padding-left: 0;
+    }
+
+    .horizontal-button-container {
+      gap: 5px;
+      margin: 0;
+      padding: 14px 0 0;
+      border-radius: 0;
+    }
+
+    .custom-button {
+      display: inline-flex;
+      flex: 0 0 auto;
+      box-sizing: border-box;
+      height: 30px;
+      min-height: 0;
+      padding: 0 9px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: var(--divider-color);
+      color: var(--second-text-color);
+      font-size: 12px;
+      font-weight: normal;
+      line-height: 18px;
+      white-space: nowrap;
+    }
+  }
+}
+
+.action-block-tip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 12px;
+  margin-top: -4px;
+  color: var(--comment-text-color);
+  font-size: 12px;
+  line-height: 1.5;
+
+  a {
+    color: var(--primary-color);
+    text-decoration: none;
   }
 }
 
@@ -804,17 +1040,23 @@ defineExpose({ exitAllEditName });
   background-color: var(--divider-color);
   color: var(--second-text-color);
   padding: 9px 15px;
-  // margin: 8px;
   border-radius: 18px;
   border: none;
   font-weight: normal;
-  // box-shadow: 0 1px 40px var(--background-color);
   cursor: pointer;
+  display: flex;
+  flex: 1 1 132px;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  min-width: 0;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .horizontal-button-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 15px;
   background-color: var(--card-color);
   margin: 10px;

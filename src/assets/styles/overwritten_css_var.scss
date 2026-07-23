@@ -20,6 +20,101 @@
   }
 }
 
+.editor-section-tabs {
+  box-sizing: border-box;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  width: 100%;
+  overflow: hidden;
+  padding: 10px;
+  background: var(--nav-bar-color);
+  backdrop-filter: blur(var(--nav-bar-blur));
+  -webkit-backdrop-filter: blur(var(--nav-bar-blur));
+  color: var(--primary-text-color);
+
+  @media screen and (min-width: 600px) {
+    max-width: 85%;
+  }
+
+  @media screen and (min-width: 768px) {
+    max-width: 630px;
+    border-radius: var(--item-card-radios);
+  }
+
+  @media screen and (min-width: 900px) {
+    max-width: 700px;
+  }
+
+  @media screen and (min-width: 1200px) {
+    max-width: 900px;
+  }
+
+  .editor-section-tab-list {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .editor-section-tab {
+    margin: 0 5px;
+    padding: 7.5px 2.5px 4px;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    background: transparent;
+    color: var(--second-text-color);
+    font-size: 12px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .editor-section-tab.current {
+    border-bottom-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+
+  .editor-grouping-tips-button {
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    margin: 0 5px 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--second-text-color);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover,
+    &:focus {
+      color: var(--primary-color);
+      outline: none;
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
+.editor-section-tabs + .form-block-wrapper {
+  padding-top: 51px;
+}
+
+.editor-tab-fixed-offset {
+  padding-top: 40px;
+}
+
 // sticky title 顶部粘性定位标题
 .sticky-title-wrapper {
   margin-top: var(--safe-area-side);
@@ -33,6 +128,13 @@
 .nut-popup {
   -webkit-user-select: none;
   user-select: none;
+  // NutUI popups are teleported to body, so scoped pop-class styles on pages
+  // cannot reliably theme the popup root after CSS code splitting. The doubled
+  // selector keeps this override stable when Vite dev injects NutUI styles later.
+  &.nut-popup {
+    background-color: var(--popup-color);
+    color: var(--primary-text-color);
+  }
 
   &.popup-bottom {
     @include popup-centered;
@@ -91,6 +193,16 @@ img.auto-reverse {
   filter: brightness(var(--img-brightness));
 }
 
+// Keep editor top preview images aligned with the page theme while they reload.
+.sticky-title-icon-container {
+  .nut-image {
+    .nut-img-loading,
+    .nut-img-error {
+      background-color: var(--background-color);
+    }
+  }
+}
+
 // dialog
 .auto-dialog {
   background-color: var(--dialog-color) !important;
@@ -103,6 +215,16 @@ img.auto-reverse {
     > .nut-dialog__header {
       color: var(--primary-text-color);
       font-weight: bold;
+    }
+  }
+}
+
+.image-fit-tips-dialog {
+  > .nut-dialog {
+    > .nut-dialog__content {
+      color: var(--primary-text-color);
+      line-height: 1.5;
+      text-align: left !important;
     }
   }
 }
@@ -125,6 +247,28 @@ img.auto-reverse {
   }
 }
 
+.form-block-wrapper,
+.artifact-panel {
+  .nut-form-item:has(.nut-input-left-icon) > .nut-form-item__label {
+    margin-right: 6px;
+  }
+
+  .nut-input-left-icon {
+    align-items: center;
+    flex: 0 0 20px;
+    justify-content: center;
+    margin-right: 6px;
+    width: 20px;
+  }
+
+  .nut-input-left-icon .nut-icon {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    width: 20px;
+  }
+}
+
 // input & textarea
 .input-text,
 .nut-input-readonly,
@@ -132,19 +276,31 @@ img.auto-reverse {
 .nut-input-text {
   color: var(--second-text-color) !important;
 }
-:-moz-placeholder {
-  color: var(--comment-text-color);
+
+input::placeholder,
+textarea::placeholder,
+.nut-input__placeholder {
+  color: var(--comment-text-color) !important;
+  opacity: 1;
 }
-::-moz-placeholder {
-  color: var(--comment-text-color);
+input:-moz-placeholder,
+textarea:-moz-placeholder {
+  color: var(--comment-text-color) !important;
+  opacity: 1;
+}
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: var(--comment-text-color) !important;
+  opacity: 1;
 }
 input:-ms-input-placeholder,
 textarea:-ms-input-placeholder {
-  color: var(--comment-text-color);
+  color: var(--comment-text-color) !important;
 }
 input::-webkit-input-placeholder,
 textarea::-webkit-input-placeholder {
   color: var(--comment-text-color) !important;
+  opacity: 1;
 }
 
 .Toastify__close-button {

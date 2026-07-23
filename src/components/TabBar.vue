@@ -1,5 +1,5 @@
 <template>
-  <div class="tab-bar-wrapper">
+  <div class="tab-bar-wrapper" :class="{ 'is-wide-screen-visible': isWideScreenNarrowModeActive }">
     <nut-tabbar
       unactive-color=""
       v-model:visible="activeTab"
@@ -8,14 +8,31 @@
       size="22px"
     >
       <nut-tabbar-item class="tabbar-item" to="/subs" icon="link" />
-      <nut-tabbar-item v-show="!appearanceSetting.istabBar2" class="tabbar-item" to="/files" icon="category" />
+      <nut-tabbar-item
+        v-show="!shouldHideFilesTab"
+        class="tabbar-item"
+        to="/files"
+        icon="category"
+      />
 
       <nut-tabbar-item
-        v-show="!appearanceSetting.istabBar"
+        v-show="!shouldHideSyncTab"
         class="tabbar-item"
         to="/sync"
         icon="refresh2"
       />
+      <nut-tabbar-item
+        v-show="shouldShowShareTab"
+        class="tabbar-item"
+        to="/shares"
+      >
+        <template #icon>
+          <font-awesome-icon
+            class="tabbar-share-icon"
+            icon="fa-solid fa-share-nodes"
+          />
+        </template>
+      </nut-tabbar-item>
 
       <nut-tabbar-item class="tabbar-item" to="/my" icon="setting" :dot="env.hasNewVersion"/>
     </nut-tabbar>
@@ -23,21 +40,59 @@
 </template>
 
 <script lang="ts" setup>
+  import { useWideScreenNarrowMode } from '@/hooks/useWideScreenNarrowMode';
   import { useGlobalStore } from '@/store/global';
   import { useSettingsStore } from '@/store/settings';
   import { storeToRefs } from 'pinia';
-  import { ref } from 'vue';
+  import { computed, ref } from 'vue';
   import { onBeforeRouteUpdate, useRoute } from 'vue-router';
 
   const route = useRoute();
-  const routeList = ['/subs', '/files', '/sync', '/my'];
+  const routeList = ['/subs', '/files', '/sync', '/shares', '/my'];
   const activeTab = ref(routeList.indexOf(route.path));
+  const { isWideScreenNarrowModeActive } = useWideScreenNarrowMode();
 
 
 
   const globalStore = useGlobalStore();
   const settingsStore = useSettingsStore();
-  const { appearanceSetting } = storeToRefs(settingsStore);
+  const { appearanceSetting, hasFetchedSettings, hasCachedAppearanceNavigationSetting } = storeToRefs(settingsStore);
+  const shouldHideFilesTab = computed(() => {
+    if (hasCachedAppearanceNavigationSetting.value) {
+      return !!appearanceSetting.value.istabBar2;
+    }
+
+    if (!hasFetchedSettings.value) {
+      return false;
+    }
+
+    return !!appearanceSetting.value.istabBar2;
+  });
+  const shouldHideSyncTab = computed(() => {
+    if (hasCachedAppearanceNavigationSetting.value) {
+      return !!appearanceSetting.value.istabBar;
+    }
+
+    if (!hasFetchedSettings.value) {
+      return false;
+    }
+
+    return !!appearanceSetting.value.istabBar;
+  });
+  const shouldHideShareTab = computed(() => {
+    if (hasCachedAppearanceNavigationSetting.value) {
+      return !!appearanceSetting.value.istabBar3;
+    }
+
+    if (!hasFetchedSettings.value) {
+      return false;
+    }
+
+    return !!appearanceSetting.value.istabBar3;
+  });
+  const shouldShowShareTab = computed(() => {
+    return !!env.value?.feature?.share && !shouldHideShareTab.value;
+  });
 
   const {
     bottomSafeArea,
@@ -63,6 +118,16 @@
     bottom: 0;
     @include centered-fixed-container;
 
+    @media screen and (min-width: 768px) {
+      display: none !important;
+    }
+
+    &.is-wide-screen-visible {
+      @media screen and (min-width: 768px) {
+        display: block !important;
+      }
+    }
+
     .tabbar {
       padding-top: 8px;
       padding-bottom: v-bind('style.paddingBottom');
@@ -78,12 +143,20 @@
 
     :deep(.tabbar-item) {
       cursor: pointer;
+
       &.nut-tabbar-item__icon--unactive {
         color: var(--lowest-text-color);
       }
+
       & > .nut-tabbar-item_icon-box > .nut-tabbar-item_icon-box_nav-word {
         margin-top: 8px;
         font-weight: 600;
+      }
+
+      .tabbar-share-icon {
+        width: 22px;
+        height: 22px;
+        font-size: 22px;
       }
     }
   }

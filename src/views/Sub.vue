@@ -104,7 +104,7 @@
 
     <!-- 页面内容 -->
     <!-- 有数据 -->
-    <div class="subs-list-wrapper">
+    <div class="subs-list-wrapper" :class="{ 'dual-column-mode': isDualColumnMode }">
       <div v-if="tags && tags.length > 0" ref="radioWrapperRef" class="radio-wrapper" >
         <!-- <nut-radiogroup v-model="tag" direction="horizontal"> -->
           <!-- <nut-radio v-for="i in tags" shape="button" :label="String(i.value)">{{ i.label }}</nut-radio> -->
@@ -115,7 +115,7 @@
         <div v-if="filterdSubsCount > 0" class="subs-list-content">
           <div class="title-wrappers">
             <p class="list-title" @click="toggleFold('sub')">
-              <p>{{ `${$t(`specificWord.singleSub`)  }(${filterdSubsCount})` }}</p>
+              <span class="list-title-text">{{ `${$t(`specificWord.singleSub`)  }(${filterdSubsCount})` }}</span>
               <nut-icon v-if="!isFold('sub')" name="rect-down" size="12px"></nut-icon>
               <nut-icon v-else name="rect-right" size="12px"></nut-icon>
             </p>
@@ -123,7 +123,9 @@
 
           <draggable
             v-if="!isFold('sub')"
-            v-model="subs"
+            class="list-draggable"
+            :class="{ 'dual-column': isDualColumnMode }"
+            v-model="filteredSubs"
             item-key="name"
             :scroll-sensitivity="200"
             :force-fallback="true"
@@ -141,11 +143,12 @@
             @end="handleDragEnd(subs)"
           >
             <template #item="{ element }">
-              <div v-show="shouldShowElement(element)" :key="element.name" class="draggable-item">
+              <div :key="element.name" class="draggable-item">
                 <SubListItem
                   :sub="element"
                   type="sub"
                   :disabled="swipeDisabled"
+                  :is-dual-column="isDualColumnMode"
                   @share="handleShare"
                 />
               </div>
@@ -155,7 +158,7 @@
         <div v-if="filterdColsCount > 0" class="subs-list-content">
           <div class="title-wrappers">
             <p class="list-title" @click="toggleFold('col')">
-              <p>{{ `${$t(`specificWord.collectionSub`)  }(${filterdColsCount})`}}</p>
+              <span class="list-title-text">{{ `${$t(`specificWord.collectionSub`)  }(${filterdColsCount})`}}</span>
               <nut-icon v-if="!isFold('col')" name="rect-down" size="12px"></nut-icon>
               <nut-icon v-else name="rect-right" size="12px"></nut-icon>
             </p>
@@ -163,7 +166,9 @@
 
           <draggable
             v-if="!isFold('col')"
-            v-model="collections"
+            class="list-draggable"
+            :class="{ 'dual-column': isDualColumnMode }"
+            v-model="filteredCollections"
             item-key="name"
             :scroll-sensitivity="200"
             :force-fallback="true"
@@ -181,11 +186,12 @@
             @end="handleDragEnd(collections)"
           >
             <template #item="{ element }">
-              <div v-show="shouldShowElement(element)" :key="element.name" class="draggable-item">
+              <div :key="element.name" class="draggable-item">
                 <SubListItem
                   :collection="element"
                   type="collection"
                   :disabled="swipeDisabled"
+                  :is-dual-column="isDualColumnMode"
                   @share="handleShare"
                 />
               </div>
@@ -197,7 +203,7 @@
     <!-- 没有数据 -->
     <div
       v-if="!isLoading && fetchResult && !hasSubs && !hasCollections"
-      class="no-data-wrapper"
+      class="empty-state-wrapper"
     >
       <nut-empty image="empty">
         <template #description>
@@ -211,19 +217,19 @@
     </div>
 
     <!-- 数据加载失败 -->
-    <div v-if="!isLoading && !fetchResult" class="no-data-wrapper">
+    <div v-if="!isLoading && !fetchResult" class="empty-state-wrapper">
       <nut-empty image="error" style="padding: 32px 30px">
         <template #description>
           <h3>{{ $t(`subPage.loadFailed.title`) }}</h3>
           <p>{{ $t(`subPage.loadFailed.desc`) }}</p>
-          <p>{{ $t(`subPage.loadFailed.followOfficialChannel`) }}</p>
+          <a href="https://telegram.me/zhetengsha/218" style="color: var(--primary-color)"> {{ $t(`magicPath.troubleshooting`) }}</a>
           <p>
-            {{ $t(`subPage.loadFailed.officialChannel`) }}
+            
             <a
-              href="https://t.me/cool_scripts"
+              href="/aboutUs"
               style="color: var(--primary-color)"
             >
-              Cool Scripts
+              {{ $t(`subPage.loadFailed.about`) }}
             </a>
           </p>
         </template>
@@ -231,42 +237,41 @@
       <nut-button icon="refresh" type="primary" @click="refresh">
         {{ $t(`subPage.loadFailed.btn`) }}
       </nut-button>
-      <a
+      <!-- <a
         href="https://www.notion.so/Sub-Store-6259586994d34c11a4ced5c406264b46"
         target="_blank"
       >
         <span>{{ $t(`subPage.loadFailed.doc`) }}</span>
         <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
-      </a>
+      </a> -->
     </div>
-
-    <SharePopup
-      v-model:visible="sharePopupVisible"
-      :data="shareData"
-      action="add"
-    />
   </div>
 </template>
 
 <script lang="ts" setup>
 import { Dialog } from '@nutui/nutui';
 import { storeToRefs } from "pinia";
-import { computed, nextTick, onMounted, ref, toRaw, watch } from "vue";
+import { computed, onMounted, ref, toRaw, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import draggable from "vuedraggable";
 
-import SharePopup from "./share/SharePopup.vue";
 import { useSubsApi } from "@/api/subs";
 import SubListItem from "@/components/SubListItem.vue";
 import { useBackend } from "@/hooks/useBackend";
+import { useFilteredDraggableList } from "@/hooks/useFilteredDraggableList";
+import { useListViewMode } from "@/hooks/useListViewMode";
+import { useTagBarHeight } from "@/hooks/useTagBarHeight";
 import { useAppNotifyStore } from "@/store/appNotify";
 import { useGlobalStore } from "@/store/global";
 import { useSystemStore } from "@/store/system";
+import { useListSearchStore } from "@/store/listSearch";
 import { useMethodStore } from '@/store/methodStore';
 import { useSettingsStore } from '@/store/settings';
 import { useSubsStore } from "@/store/subs";
+import { getShareCreatePath } from "@/utils/share";
 import { initStores } from "@/utils/initApp";
+import { listItemMatchesSearch, shouldSearchListRemark } from "@/utils/listSearch";
 import { isMobile } from "@/utils/isMobile";
 const { env } = useBackend();
 const { showNotify } = useAppNotifyStore();
@@ -283,8 +288,11 @@ const subsStore = useSubsStore();
 const globalStore = useGlobalStore();
 const systemStore = useSystemStore();
 const settingsStore = useSettingsStore();
+const listSearchStore = useListSearchStore();
+const router = useRouter();
 const { hasSubs, hasCollections, subs, collections } = storeToRefs(subsStore);
 const { appearanceSetting } = storeToRefs(settingsStore);
+const { effectiveListViewMode } = useListViewMode();
 const {
   // isSimpleMode,
   isLoading,
@@ -293,6 +301,9 @@ const {
   // showFloatingRefreshButton,
 } = storeToRefs(globalStore);
 const { navBarHeight } = storeToRefs(systemStore);
+const isDualColumnMode = computed(() => {
+  return effectiveListViewMode.value === "dual-column";
+});
 const swipeDisabled = ref(false);
 const touchStartY = ref(null);
 const touchStartX = ref(null);
@@ -349,28 +360,15 @@ const tags = computed(() => {
   }
   return result;
 });
-const shareData = ref(null);
-const sharePopupVisible = ref(false);
 const handleShare = (element, type) => {
-  console.log("share", element);
-  shareData.value = {
-    displayName: element.displayName || "",
-    name: element.name,
-    type: type as "col" | "sub",
-  };
-  sharePopupVisible.value = true;
+  const shareType = type === "collection" ? "col" : "sub";
+  router.push(getShareCreatePath(shareType, element.name));
 };
 const filterdSubsCount = computed(() => {
-  if(tag.value === 'all') return subs.value.length;
-  if(tag.value === 'untagged') return subs.value.filter(i => !Array.isArray(i.tag) || i.tag.length === 0).length;
-  if(tag.value === 'remote') return subs.value.filter(i => i.source === "remote").length;
-  if(tag.value === 'local') return subs.value.filter(i => i.source === "local").length;
-  return subs.value.filter(i => i.tag.includes(tag.value)).length;
+  return subs.value.filter(shouldShowElement).length;
 });
 const filterdColsCount = computed(() => {
-  if(tag.value === 'all') return collections.value.length;
-  if(tag.value === 'untagged') return collections.value.filter(i => !Array.isArray(i.tag) || i.tag.length === 0).length;
-  return collections.value.filter(i => i.tag.includes(tag.value)).length;
+  return collections.value.filter(shouldShowElement).length;
 });
 const onTouchStart = (event: TouchEvent) => {
   touchStartY.value = Math.abs(event.touches[0].clientY);
@@ -416,31 +414,24 @@ const addSub = () => {
 };
 
 const route = useRoute();
-const radioWrapperRef = ref(null);
-const radioWrapperHeight = ref(0);
-
-// 更新标签栏高度
-const updateRadioWrapperHeight = () => {
-  nextTick(() => {
-    if (radioWrapperRef.value) {
-      radioWrapperHeight.value = radioWrapperRef.value.offsetHeight;
-    } else {
-      radioWrapperHeight.value = 0;
-    }
-  });
-};
-
-watch(tag, () => {
-  updateRadioWrapperHeight();
-});
-
-watch(() => tags.value, () => {
-  updateRadioWrapperHeight();
-}, { deep: true, immediate: true });
+const { tagBarRef: radioWrapperRef, tagBarHeight: radioWrapperHeight } = useTagBarHeight([
+  tag,
+  () => tags.value,
+]);
 
 onMounted(() => {
   methodStore.registerMethod("addSub", addSub);
+  refreshMissingFlows();
 });
+
+const refreshMissingFlows = async () => {
+  if (route.path !== "/subs" || isLoading.value || !fetchResult.value) return;
+  try {
+    await subsStore.fetchFlows(undefined, { missingOnly: true });
+  } catch (error) {
+    console.error(error);
+  }
+};
 
 let dragData = null;
 const changeSort = async (
@@ -551,13 +542,21 @@ const setTag = (current) => {
   scrollToTop();
 };
 
-const shouldShowElement = (element) => {
+const shouldShowElementByTag = (element) => {
   if(tag.value === 'all') return true;
   if(tag.value === 'untagged') return !Array.isArray(element.tag) || element.tag.length === 0;
   if(tag.value === 'remote') return element.source === 'remote';
   if(tag.value === 'local') return element.source === 'local';
   return element.tag?.includes(tag.value);
 };
+const shouldShowElement = (element) => {
+  return shouldShowElementByTag(element)
+    && listItemMatchesSearch(element, listSearchStore.normalizedQuery, {
+      includeRemark: shouldSearchListRemark(appearanceSetting.value),
+    });
+};
+const filteredSubs = useFilteredDraggableList(subs, shouldShowElement);
+const filteredCollections = useFilteredDraggableList(collections, shouldShowElement);
 const upload = async() => {
   try {
     fileInput.value.click();
@@ -713,36 +712,6 @@ const importTips = () => {
   }
 }
 
-.no-data-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-
-  h3 {
-    font-size: 18px;
-    margin-bottom: 12px;
-    color: var(--primary-text-color);
-  }
-
-  p {
-    font-size: 14px;
-    color: var(--comment-text-color);
-  }
-
-  a {
-    font-size: 14px;
-    margin-top: 24px;
-    color: var(--comment-text-color);
-
-    span {
-      margin-right: 4px;
-    }
-  }
-}
-
 .list-title {
   -webkit-user-select: none;
   user-select: none;
@@ -753,7 +722,7 @@ const importTips = () => {
   padding-left: 8px;
   font-weight: bold;
   //padding-left: var(--safe-area-side);
-  p {
+  .list-title-text {
     margin-right: 6px;
   }
   :deep(.nut-icon) {
@@ -798,7 +767,8 @@ const importTips = () => {
 .draggable-item {
   margin-top: 12px;
   margin-bottom: 12px;
-  // overflow: hidden;
+  border-radius: var(--item-card-radios);
+  overflow: hidden;
 }
 
 .chosensub {
@@ -809,6 +779,20 @@ const importTips = () => {
 
 .subs-list-wrapper {
   width: 100%;
+  .list-draggable.dual-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+    padding-top: 12px;
+
+    > .draggable-item {
+      min-width: 0;
+      margin: 0;
+      border-radius: var(--item-card-radios);
+      overflow: hidden;
+    }
+  }
   .radio-wrapper {
     box-sizing: border-box;
     width: 100%;
@@ -821,6 +805,7 @@ const importTips = () => {
     backdrop-filter: blur(var(--nav-bar-blur));
     -webkit-backdrop-filter: blur(var(--nav-bar-blur));
     background: var(--nav-bar-color);
+    pointer-events: none;
     @include centered-fixed-container;
       @media screen and (min-width: 768px) {
         border-radius: var(--item-card-radios);
@@ -832,6 +817,7 @@ const importTips = () => {
       margin: 0px 5px;
       padding: 7.5px 2.5px 4px;
       cursor: pointer;
+      pointer-events: auto;
       -webkit-user-select: none;
       user-select: none;
       border-bottom: 1px solid transparent;
@@ -848,6 +834,10 @@ const importTips = () => {
     margin-top: 0;
     padding: 0;
     // margin-top: var(--safe-area-side);
+  }
+
+  .subs-list-content + .subs-list-content {
+    margin-top: 8px;
   }
 }
 </style>

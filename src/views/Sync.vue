@@ -26,125 +26,133 @@
           }"
         >
           <div
+            v-if="appearanceSetting.showFloatingRefreshButton"
+            class="drag-btn refresh"
+            @click="refresh"
+          >
+            <font-awesome-icon icon="fa-solid fa-arrow-rotate-right" />
+          </div>
+
+          <div
             v-if="appearanceSetting.showFloatingAddButton"
-            class="drag-btn"
             @touchmove="onTa"
             @touchend="enTa"
             @click="onclickAddArtifact"
           >
-            <font-awesome-icon icon="fa-solid fa-plus" />
+            <div class="drag-btn">
+              <font-awesome-icon icon="fa-solid fa-plus" />
+            </div>
           </div>
         </nut-drag>
       </div>
     </Teleport>
 
-    <ArtifactPanel
-      v-if="isEditPanelVisible"
-      :name="editTargetName"
-      @close="closeArtifactPanel"
-    />
-
-    <!--有数据-->
-    <div v-if="artifacts.length > 0" class="subs-list-wrapper">
-      <div class="sticky-title-wrapper sync-title">
-        <p class="list-title">{{ $t(`syncPage.title`) }}</p>
-        <div class="actions-wrapper">
-          <nut-button
-            class="upload-all-btn btn"
-            type="info"
-            plain
-            :disabled="uploadAllIsDisabled"
-            size="small"
-            :loading="uploadAllIsLoading"
-            @click="uploadAll"
-          >
-            <font-awesome-icon
-              icon="fa-solid fa-cloud-arrow-up"
-              v-if="!uploadAllIsLoading"
-            />
-          </nut-button>
-          <nut-button
-            v-if="syncPlatform !== 'gitlab'"
-            class="upload-all-btn btn"
-            type="info"
-            plain
-            size="small"
-            :loading="downloadAllIsLoading"
-            @click="downloadAll"
-          >
-            <font-awesome-icon
-              icon="fa-solid fa-cloud-arrow-down"
-              v-if="!downloadAllIsLoading"
-            />
-          </nut-button>
-          <nut-button
-            class="preview-btn btn"
-            type="info"
-            plain
-            size="small"
-            @click="preview"
-          >
-            <font-awesome-icon icon="fa-solid fa-eye" />
-          </nut-button>
-        </div>
+    <div class="subs-list-wrapper" :class="{ 'dual-column-mode': isDualColumnMode }">
+      <div
+        v-if="artifacts.length > 0 && tags.length > 0"
+        ref="radioWrapperRef"
+        class="radio-wrapper"
+      >
+        <span
+          v-for="item in tags"
+          :key="item.value"
+          class="tag"
+          :class="{ current: item.value === tag }"
+          @click="setTag(item.value)"
+        >
+          {{ item.label }}
+        </span>
       </div>
 
-      <draggable
-        v-model="artifacts"
-        @change="changeArtifacts"
-        @start="handleDragStart"
-        @end="handleDragEnd"
-        itemKey="name"
-        :scroll-sensitivity="200"
-        :force-fallback="true"
-        :scrollSpeed="8"
-        :scroll="true"
-        v-bind="{
-          animation: 200,
-          disabled: false,
-          delay: 200,
-          chosenClass: 'chosensub',
-          handle: 'div',
-        }"
-      >
-        <template #item="{ element }">
-          <div :key="element.name" class="draggable-itemsync">
-            <ArtifactsListItem
-              :name="element.name"
-              @edit="onClickEdit"
-              :disabled="swipeDisabled"
-              Í
-            />
+      <div class="subs-list-container" :style="{ paddingTop: `${radioWrapperHeight ? radioWrapperHeight : (radioWrapperHeight+10)}px` }">
+        <div class="sticky-title-wrapper sync-title">
+          <div v-if="isNodeBackend" class="sync-title-main">
+            <div
+              class="global-cron-tip"
+              :title="globalSyncCronText"
+            >
+              <font-awesome-icon icon="fa-solid fa-clock" />
+              <span>{{ globalSyncCronText }}</span>
+            </div>
           </div>
-        </template>
-      </draggable>
-    </div>
-    <div v-else class="subs-list-wrapper">
-      <div class="sticky-title-wrapper sync-title">
-        <p class="list-title">{{ $t(`syncPage.title`) }}</p>
-        <div class="actions-wrapper">
-          <nut-button
-            class="upload-all-btn btn"
-            type="info"
-            plain
-            size="small"
-            :loading="downloadAllIsLoading"
-            @click="downloadAll"
+          <p v-else class="list-title">{{ $t(`syncPage.title`) }}</p>
+          <div class="actions-wrapper">
+            <nut-button
+              v-if="artifacts.length > 0"
+              class="upload-all-btn btn"
+              type="info"
+              plain
+              :disabled="uploadAllIsDisabled"
+              size="small"
+              :loading="uploadAllIsLoading"
+              @click="uploadAll"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-cloud-arrow-up"
+                v-if="!uploadAllIsLoading"
+              />
+            </nut-button>
+            <nut-button
+              v-if="syncPlatform !== 'gitlab'"
+              class="upload-all-btn btn"
+              type="info"
+              plain
+              size="small"
+              :loading="downloadAllIsLoading"
+              @click="downloadAll"
+            >
+              <font-awesome-icon
+                icon="fa-solid fa-cloud-arrow-down"
+                v-if="!downloadAllIsLoading"
+              />
+            </nut-button>
+            <nut-button
+              class="preview-btn btn"
+              type="info"
+              plain
+              size="small"
+              @click="preview"
+            >
+              <font-awesome-icon icon="fa-solid fa-eye" />
+            </nut-button>
+          </div>
+        </div>
+
+        <div v-if="artifacts.length > 0">
+          <draggable
+            class="sync-draggable-list"
+            :class="{ 'dual-column': isDualColumnMode }"
+            v-model="filteredArtifacts"
+            @change="changeArtifacts"
+            @start="handleDragStart"
+            @end="handleDragEnd"
+            itemKey="name"
+            :scroll-sensitivity="200"
+            :force-fallback="true"
+            :scrollSpeed="8"
+            :scroll="true"
+            v-bind="{
+              animation: 200,
+              disabled: false,
+              delay: 200,
+              chosenClass: 'chosensub',
+              handle: 'div',
+            }"
           >
-            <font-awesome-icon
-              icon="fa-solid fa-cloud-arrow-down"
-              v-if="!downloadAllIsLoading"
-            />
-          </nut-button>
-          <nut-button
-            class="preview-btn btn"
-            type="info"
-            plain
-            size="small"
-            @click="preview"
-          >
-            <font-awesome-icon icon="fa-solid fa-eye" />
-          </nut-button>
+            <template #item="{ element }">
+              <div
+                :key="element.name"
+                class="draggable-itemsync"
+              >
+                <ArtifactsListItem
+                  :name="element.name"
+                  @edit="onClickEdit"
+                  :disabled="swipeDisabled"
+                  :is-dual-column="isDualColumnMode"
+                />
+              </div>
+            </template>
+          </draggable>
         </div>
       </div>
     </div>
@@ -152,7 +160,7 @@
     <!--没有数据-->
     <div
       v-if="!isLoading && fetchResult && artifacts.length === 0"
-      class="no-data-wrapper"
+      class="empty-state-wrapper"
     >
       <nut-empty image="empty">
         <template #description>
@@ -166,19 +174,19 @@
     </div>
 
     <!--数据加载失败-->
-    <div v-if="!isLoading && !fetchResult" class="no-data-wrapper">
+    <div v-if="!isLoading && !fetchResult" class="empty-state-wrapper">
       <nut-empty image="error" style="padding: 32px 30px">
         <template #description>
           <h3>{{ $t(`subPage.loadFailed.title`) }}</h3>
           <p>{{ $t(`subPage.loadFailed.desc`) }}</p>
-          <p>{{ $t(`subPage.loadFailed.followOfficialChannel`) }}</p>
+          <a href="https://telegram.me/zhetengsha/218" style="color: var(--primary-color)"> {{ $t(`magicPath.troubleshooting`) }}</a>
           <p>
-            {{ $t(`subPage.loadFailed.officialChannel`) }}
+            {{ $t(`subPage.loadFailed.about`) }}
             <a
-              href="https://t.me/cool_scripts"
+              href="/aboutUs"
               style="color: var(--primary-color)"
             >
-              Cool Scripts
+              {{ $t(`subPage.loadFailed.about`) }}
             </a>
           </p>
         </template>
@@ -186,13 +194,13 @@
       <nut-button icon="refresh" type="primary" @click="refresh">
         {{ $t(`subPage.loadFailed.btn`) }}
       </nut-button>
-      <a
+      <!-- <a
         href="https://www.notion.so/Sub-Store-6259586994d34c11a4ced5c406264b46"
         target="_blank"
       >
         <span>{{ $t(`subPage.loadFailed.doc`) }}</span>
         <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
-      </a>
+      </a> -->
     </div>
   </div>
 </template>
@@ -202,27 +210,35 @@ import ArtifactsListItem from "@/components/ArtifactsListItem.vue";
 import { useArtifactsStore } from "@/store/artifacts";
 import { storeToRefs } from "pinia";
 import { useGlobalStore } from "@/store/global";
-import { ref, computed, toRaw, onMounted } from "vue";
+import { ref, computed, toRaw, onMounted, watch } from "vue";
 import { initStores } from "@/utils/initApp";
 import { useSettingsStore } from "@/store/settings";
-// import { useI18n } from 'vue-i18n';
-import ArtifactPanel from "@/components/ArtifactPanel.vue";
 import { useMethodStore } from '@/store/methodStore';
 import draggable from "vuedraggable";
 import { useSubsApi } from "@/api/subs";
 import { useI18n } from "vue-i18n";
 import { useAppNotifyStore } from "@/store/appNotify";
 import { useBackend } from "@/hooks/useBackend";
+import { useFilteredDraggableList } from "@/hooks/useFilteredDraggableList";
+import { useListViewMode } from "@/hooks/useListViewMode";
+import { useTagBarHeight } from "@/hooks/useTagBarHeight";
 import { Dialog } from "@nutui/nutui";
 import { isMobile } from "@/utils/isMobile";
+import { listItemMatchesSearch, shouldSearchListRemark } from "@/utils/listSearch";
+import { useRouter } from "vue-router";
+import { useSystemStore } from "@/store/system";
+import { useListSearchStore } from "@/store/listSearch";
 
 const { env } = useBackend();
 const subsApi = useSubsApi();
-// const { t } = useI18n();
+const router = useRouter();
 const globalStore = useGlobalStore();
 const artifactsStore = useArtifactsStore();
 const settingsStore = useSettingsStore();
+const systemStore = useSystemStore();
 const methodStore = useMethodStore();
+const listSearchStore = useListSearchStore();
+const { effectiveListViewMode } = useListViewMode();
 
 const {
   // isSimpleMode,
@@ -232,6 +248,10 @@ const {
   // showFloatingRefreshButton,
 } = storeToRefs(globalStore);
 const { artifacts } = storeToRefs(artifactsStore);
+const { navBarHeight } = storeToRefs(systemStore);
+const isDualColumnMode = computed(() => {
+  return effectiveListViewMode.value === "dual-column";
+});
 const {
   appearanceSetting,
   artifactStore: artifactStoreUrl,
@@ -240,12 +260,58 @@ const {
 } = storeToRefs(settingsStore);
 const { showNotify } = useAppNotifyStore();
 const swipeDisabled = ref(false);
-const isEditPanelVisible = ref(false);
 const sortFailed = ref(false);
-const editTargetName = ref("");
 const touchStartY = ref(null);
 const touchStartX = ref(null);
 const { t } = useI18n();
+const isNodeBackend = computed(() => env.value?.backend === "Node");
+const globalSyncCron = computed(() => {
+  return `${env.value?.meta?.node?.env?.SUB_STORE_BACKEND_SYNC_CRON || ""}`.trim();
+});
+const globalSyncCronText = computed(() => {
+  return globalSyncCron.value
+    ? t("syncPage.globalCronTip", { cron: globalSyncCron.value })
+    : t("syncPage.globalCronUnsetTip");
+});
+const getTag = () => {
+  return localStorage.getItem("artifact-tag") || "all";
+};
+const tag = ref(getTag());
+const tagNavBarHeight = computed(() => navBarHeight.value);
+const tags = computed(() => {
+  if (artifacts.value.length === 0) return [];
+
+  let hasUntagged = false;
+  const set = new Set<string>();
+  artifacts.value.forEach(artifact => {
+    if (Array.isArray(artifact.tag) && artifact.tag.length > 0) {
+      artifact.tag.forEach(item => {
+        set.add(item);
+      });
+    } else {
+      hasUntagged = true;
+    }
+  });
+
+  const customTags = Array.from(set).map((item: string) => ({
+    label: item,
+    value: item,
+  }));
+  const result = [{ label: t("specificWord.all"), value: "all" }, ...customTags];
+  if (customTags.length > 0 && hasUntagged) {
+    result.push({ label: t("specificWord.untagged"), value: "untagged" });
+  }
+
+  if (!result.find(item => item.value === tag.value)) {
+    tag.value = "all";
+  }
+
+  return result;
+});
+const { tagBarRef: radioWrapperRef, tagBarHeight: radioWrapperHeight } = useTagBarHeight([
+  tag,
+  () => tags.value,
+]);
 
 const onTouchStart = (event: TouchEvent) => {
   touchStartY.value = Math.abs(event.touches[0].clientY);
@@ -350,8 +416,7 @@ const preview = () => {
 };
 
 const onClickEdit = (artifact: Artifact) => {
-  editTargetName.value = artifact.name;
-  isEditPanelVisible.value = true;
+  router.push(`/edit/sync/${artifact.name}`);
 };
 
 const as = ref(false);
@@ -368,17 +433,12 @@ const enTa = () => {
 
 const onclickAddArtifact = () => {
   if (as.value) return;
-  isEditPanelVisible.value = true;
+  router.push("/edit/sync/UNTITLED");
 };
 
 onMounted(() => {
   methodStore.registerMethod("addSync", onclickAddArtifact);
 });
-
-const closeArtifactPanel = () => {
-  editTargetName.value = "";
-  isEditPanelVisible.value = false;
-};
 
 // const sortArtifacts = (newCollections: any) => {
 //   artifacts.value = newCollections;
@@ -430,19 +490,164 @@ const handleDragEnd = () => {
   }
   swipeDisabled.value = false;
 };
+
+const scrollToTop = () => {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+};
+
+const setTag = (current: string) => {
+  tag.value = current;
+  if (current === "all") {
+    localStorage.removeItem("artifact-tag");
+  } else {
+    localStorage.setItem("artifact-tag", current);
+  }
+  scrollToTop();
+};
+
+const shouldShowElementByTag = (element: Artifact) => {
+  if (tag.value === "all") return true;
+  if (tag.value === "untagged") {
+    return !Array.isArray(element.tag) || element.tag.length === 0;
+  }
+  return element.tag?.includes(tag.value);
+};
+const shouldShowElement = (element: Artifact) => {
+  return shouldShowElementByTag(element)
+    && listItemMatchesSearch(element, listSearchStore.normalizedQuery, {
+      includeRemark: shouldSearchListRemark(appearanceSetting.value),
+    });
+};
+const filteredArtifacts = useFilteredDraggableList(artifacts, shouldShowElement);
 </script>
 
 <style lang="scss" scoped>
+.drag-btn-wrapper {
+  position: relative;
+  z-index: 999;
+
+  .drag-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-image: linear-gradient(
+      to bottom right,
+      var(--primary-color),
+      var(--primary-color-end)
+    );
+    box-shadow: 0 4px 8px #0003;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    &.refresh {
+      background: var(--second-color);
+      margin-bottom: 12px;
+    }
+
+    > svg {
+      width: 20px;
+      height: 20px;
+      color: #fffb;
+    }
+  }
+}
+
+.list-title {
+  padding-left: 8px;
+  font-weight: bold;
+}
+
 .sync-title {
+  margin-top: 0px;
   display: flex;
   justify-content: space-between;
-  // align-items: center;
+
+  .sync-title-main {
+    min-width: 0;
+    flex: 1;
+    padding-left: 8px;
+  }
+
+  .global-cron-tip {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 32px;
+    gap: 8px;
+    color: var(--comment-text-color);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+
+    svg {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+    }
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
 
   .actions-wrapper {
+    flex: 0 0 auto;
     margin-right: 16px;
 
     .btn:not(:last-child) {
       margin-right: 8px;
+    }
+  }
+}
+
+.subs-list-wrapper {
+  width: calc(100% - 1.5rem);
+  margin-left: auto;
+  margin-right: auto;
+
+  .radio-wrapper {
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    position: fixed;
+    padding: 10px;
+    top: v-bind(tagNavBarHeight);
+    z-index: 10;
+    backdrop-filter: blur(var(--nav-bar-blur));
+    -webkit-backdrop-filter: blur(var(--nav-bar-blur));
+    background: var(--nav-bar-color);
+    pointer-events: none;
+    @include centered-fixed-container;
+
+    @media screen and (min-width: 768px) {
+      border-radius: var(--item-card-radios);
+      overflow: hidden;
+    }
+
+    .tag {
+      font-size: 12px;
+      color: var(--second-text-color);
+      margin: 0 5px;
+      padding: 7.5px 2.5px 4px;
+      cursor: pointer;
+      pointer-events: auto;
+      -webkit-user-select: none;
+      user-select: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    .current {
+      border-bottom: 1px solid var(--primary-color);
+      color: var(--primary-color);
     }
   }
 }
@@ -467,8 +672,24 @@ const handleDragEnd = () => {
 }
 
 .draggable-itemsync {
-  margin-top: 4px;
+  margin-top: 12px;
   margin-bottom: 12px;
-  // overflow: hidden;
+  border-radius: var(--item-card-radios);
+  overflow: hidden;
+}
+
+.sync-draggable-list.dual-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+  padding-top: 12px;
+
+  > .draggable-itemsync {
+    min-width: 0;
+    margin: 0;
+    border-radius: var(--item-card-radios);
+    overflow: hidden;
+  }
 }
 </style>

@@ -21,6 +21,14 @@ export function useSubsApi() {
         method: 'get',
       });
     },
+    exportOne: (type: 'sub' | 'collection', name: string): AxiosPromise<Blob> => {
+      return request({
+        url: `/api/${type}/${encodeURIComponent(name)}`,
+        method: 'get',
+        params: { raw: 1 },
+        responseType: 'blob',
+      });
+    },
     downloadOne: (name: string, params?: any): AxiosPromise<MyAxiosRes> => {
       return request({
         url: `/download/${encodeURIComponent(name)}`,
@@ -28,10 +36,11 @@ export function useSubsApi() {
         method: 'get',
       });
     },
-    getFlow: (name: string): AxiosPromise<MyAxiosRes> => {
+    getFlow: (name: string, signal?: AbortSignal): AxiosPromise<MyAxiosRes> => {
       return request({
         url: `/api/sub/flow/${encodeURIComponent(name)}`,
         method: 'get',
+        signal,
       });
     },
     getSubInfo: (data: NodeInfo): AxiosPromise<MyAxiosRes> => {
@@ -43,7 +52,7 @@ export function useSubsApi() {
     },
     createSub: (
       type: string,
-      data: Sub | Collection
+      data: Sub | Collection,
     ): AxiosPromise<MyAxiosRes> => {
       return request({
         url: `/api/${type}`,
@@ -62,10 +71,15 @@ export function useSubsApi() {
         data,
       });
     },
-    deleteSub: (type: string, name: string): AxiosPromise<MyAxiosRes> => {
+    deleteSub: (
+      type: string,
+      name: string,
+      mode?: DeleteMode,
+    ): AxiosPromise<MyAxiosRes> => {
       return request({
         url: `/api/${type}/${encodeURIComponent(name)}`,
         method: 'delete',
+        params: mode ? { mode } : undefined,
       });
     },
     compareSub: (

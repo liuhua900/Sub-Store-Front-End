@@ -19,7 +19,9 @@ export const useGlobalStore = defineStore('globalStore', {
       isDarkMode: false,
       env: {},
       isDockerDeployment: false,
-      isSimpleMode: localStorage.getItem('isSimpleMode') === '1',
+      isSimpleMode: localStorage.getItem('isSimpleMode') === null
+        ? true
+        : localStorage.getItem('isSimpleMode') === '1',
       isLeftRight: localStorage.getItem('isLr') === '1',
       isIconColor: localStorage.getItem('iconColor') === '1',
       isEditorCommon: localStorage.getItem('iseditorCommon') !== '1',
@@ -37,9 +39,9 @@ export const useGlobalStore = defineStore('globalStore', {
             "https://raw.githubusercontent.com/Koolson/Qure/master/Other/QureColor.json",
         },
         {
-          text: "Koolson/QureColor-All",
+          text: "xream/Qure Additions",
           value:
-            "https://raw.githubusercontent.com/Koolson/Qure/master/Other/QureColor-All.json",
+            "https://raw.githubusercontent.com/xream/Qure/refs/heads/master/xream/iconset.json",
         },
         {
           text: "Orz-3/mini",
@@ -71,6 +73,51 @@ export const useGlobalStore = defineStore('globalStore', {
           value:
             "https://raw.githubusercontent.com/lige47/QuanX-icon-rule/main/ligeicon.json",
         },
+        {
+          text: "fmz200/wool_scripts",
+          value:
+            "https://raw.githubusercontent.com/fmz200/wool_scripts/main/icons/icons-all.json",
+        },
+        {
+          text: "luestr/IconResource",
+          value:
+            "https://raw.githubusercontent.com/luestr/IconResource/main/KeLee_icon.json",
+        },
+        {
+          text: "shindgew/WHATSINStash",
+          value:
+            "https://raw.githubusercontent.com/shindgew/WHATSINStash/refs/heads/main/icon/iconset.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(default)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/default.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(dark)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/dark.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(light)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/light.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(color)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/color.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(azure)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/azure.json",
+        },
+        {
+          text: "xream/Unofficial theSVG(gcp)",
+          value:
+            "https://raw.githubusercontent.com/xream/unofficial-thesvg-iconset/refs/heads/release/gcp.json",
+        }
       ],
       customIconCollections: localStorage.getItem("customIconCollections")
         ? JSON.parse(localStorage.getItem("customIconCollections"))
@@ -114,7 +161,7 @@ export const useGlobalStore = defineStore('globalStore', {
       if (isSimpleMode) {
         localStorage.setItem('isSimpleMode', '1');
       } else {
-        localStorage.removeItem('isSimpleMode');
+        localStorage.setItem('isSimpleMode', '0');
       }
       this.isSimpleMode = isSimpleMode;
     },
@@ -182,21 +229,33 @@ export const useGlobalStore = defineStore('globalStore', {
       }
       this.istabBar2 = istabBar2;
     },
-    async setHostAPI(hostApi: string) {
+    async setHostAPI(hostApi: string, options?: { skipInit?: boolean }) {
       this.ishostApi = hostApi;
       service.defaults.baseURL = hostApi;
+      if (options?.skipInit) return;
       await initStores(true, true, true);
     },
-    async setEnv() {
-      const res = await envApi.getEnv();
-      if (res?.data?.status === 'success') {
-        this.env = res.data.data;
+    async setEnv(options?: { bypassCache?: boolean; strict?: boolean }) {
+      const res = await envApi.getEnv({
+        bypassCache: options?.bypassCache === true,
+      });
+      const nextEnv = res?.data?.status === 'success' ? res.data.data : null;
 
-        // 检测是否是Docker部署
-        if (this.env?.meta?.node?.env?.SUB_STORE_DOCKER === 'true') {
-          this.isDockerDeployment = true;
+      if (!nextEnv?.backend) {
+        if (options?.strict) {
+          throw new Error('ENV_LOAD_FAILED');
         }
+        return null;
       }
+
+      this.env = nextEnv;
+
+      // 检测是否是Docker部署
+      if (this.env?.meta?.node?.env?.SUB_STORE_DOCKER === 'true') {
+        this.isDockerDeployment = true;
+      }
+
+      return nextEnv;
     },
     setDockerDeployment(isDockerDeployment: boolean) {
       this.isDockerDeployment = isDockerDeployment;

@@ -7,9 +7,7 @@ import { createSvgIconsPlugin } from "vite-plugin-svg-icons";
 import viteCompression from "vite-plugin-compression";
 import { VitePWA } from "vite-plugin-pwa";
 
-const version = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "package.json"), "utf-8")
-).version.trim();
+const version = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf-8")).version.trim();
 
 const alias: Record<string, string> = {
   "@": path.resolve(__dirname, "src"),
@@ -106,48 +104,36 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
           ],
         },
         workbox: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,json}"],
+          navigateFallback: "/index.html",
           navigateFallbackDenylist: [/(^|\/.+)\/(api|download|share)\/.+/],
-          // globPatterns: ['**/*.{css,js,gz,eot,html,svg,png,ico,ttf,woff2}'],
           runtimeCaching: [
             {
-              urlPattern: /(^|\/.+)\/(api|download|share)\/.+/,
-              handler: "NetworkOnly",
-            },
-            {
-              urlPattern: /.*\.(?:js|css|gz|html|json)/i, // json
-              handler: "CacheFirst",
+              urlPattern: ({ url, request }) => request.destination === "script" && url.origin === self.location.origin,
+              handler: "StaleWhileRevalidate",
               options: {
-                cacheName: "sub-store-js-cache",
-                expiration: {
-                  maxEntries: 30,
-                  maxAgeSeconds: 60 * 60 * 24 * 30,
-                },
-                cacheableResponse: {
-                  statuses: [200],
-                },
+                cacheName: "js-cache",
               },
             },
             {
-              urlPattern: /.*\.(?:png|svg|ico|woff|ttf|eot)/i,
+              urlPattern: ({ request }) => request.destination === "style" || request.destination === "image" || request.destination === "font",
               handler: "CacheFirst",
               options: {
-                cacheName: "sub-store-res-cache",
-                expiration: {
-                  maxEntries: 30,
-                  maxAgeSeconds: 60 * 60 * 24 * 365,
-                },
-                cacheableResponse: {
-                  statuses: [200],
-                },
+                cacheName: "asset-cache",
               },
             },
           ],
+          skipWaiting: true,
+          clientsClaim: true,
         },
         selfDestroying: false,
       }),
     ],
     root: process.cwd(),
     resolve: { alias },
+    optimizeDeps: {
+      include: ["@codemirror/lang-yaml"],
+    },
     base: mode.command === "serve" ? "./" : env.VITE_PUBLIC_PATH,
     hmr: true,
     server: {
@@ -168,8 +154,24 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
       rollupOptions: {
         output: {
           entryFileNames: "[name].js",
-          chunkFileNames: "[name].js",
-          assetFileNames: "[name].[ext]",
+          chunkFileNames: "chunks/[name]-[hash].js",
+          assetFileNames: (assetInfo) => {
+            const ext = assetInfo.name?.split(".").pop()?.toLowerCase() ?? "";
+            if (/^(png|jpe?g|svg|webp|avif|gif|ico)$/.test(ext)) return "images/[name].[ext]";
+            if (/^(woff2?|ttf|eot|otf)$/.test(ext)) return "fonts/[name].[ext]";
+            if (ext === "css") return "css/[name].[ext]";
+            return "[name].[ext]";
+          },
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              if (id.includes("@nutui/nutui") || (id.includes("@nutui") && !id.includes("@nutui/icons"))) return "nutui";
+              if (id.includes("/codemirror/") || id.includes("@codemirror/") || id.includes("@lezer/") || id.includes("@replit/codemirror") || id.includes("js-beautify")) return "editor";
+              if (id.includes("vue-i18n") || id.includes("@intlify/")) return "i18n";
+              if (id.includes("@fortawesome/")) return "icons";
+              if (id.includes("@vuepic/vue-datepicker")) return "datepicker";
+              if (id.includes("/vue/") || id.includes("/vue-router/") || id.includes("/pinia/") || id.includes("@vue/") || id.includes("@vueuse/")) return "vue-vendor";
+            }
+          },
         },
       },
       terserOptions: {
@@ -184,6 +186,8 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
         scss: {
           // 配置 自定义覆盖主题 和 nutui 全局 scss 变量
           additionalData: `@import "@/assets/styles/custom_variables.scss";@import "@nutui/nutui/dist/styles/variables-jdt.scss";@import '@/assets/styles/mixins.scss';`,
+          // NutUI 3 和 Vite 3 仍依赖 Sass 已弃用的 API。
+          silenceDeprecations: ["import", "legacy-js-api"],
         },
       },
     },

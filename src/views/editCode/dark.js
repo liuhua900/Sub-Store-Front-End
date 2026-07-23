@@ -110,4 +110,4 @@ const darkCode = [
     syntaxHighlighting( darkCodeHighlightStyle),
 ];
 
-export { config,  darkCode,  darkCodeHighlightStyle,  darkCodeTheme };
+export { config,  darkCode, darkCodeHighlightStyle, darkCodeTheme };

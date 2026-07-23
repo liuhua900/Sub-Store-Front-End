@@ -39,10 +39,12 @@ interface Sub {
   source: 'remote' | 'local';
   icon?: string;
   isIconColor?: boolean;
+  iconFit?: ImageFit | null;
   ua?: string;
   mergeSources?: string;
   subUserinfo?: string;
   tag?: string[];
+  'age-public-key'?: string;
   process: Process[];
 }
 
@@ -53,17 +55,24 @@ interface Collection {
   process: Process[];
   subscriptions: string[];
   subscriptionTags?: string[];
+  firstSubFlow?: boolean;
+  subUserinfo?: string;
+  proxy?: string;
   icon?: string;
   isIconColor?: boolean;
+  iconFit?: ImageFit | null;
   tag?: string[];
+  'age-public-key'?: string;
 }
 
 interface Artifacts {
   name: string;
   displayName?: string;
+  remark?: string;
   type: string;
   source: string;
   platform: string;
+  tag?: string[];
   sync:boolean;
   updated:number;
   url:string;
@@ -91,16 +100,46 @@ interface Share {
   name?: string;
   displayName?: string | null;
   remark?: string | null;
+  tag?: string[];
+  icon?: string | null;
+  isIconColor?: boolean | null;
+  iconFit?: ImageFit | null;
   token?: string | null;
+  'age-public-key'?: string | null;
+  mode?: 'duration' | 'datetime' | 'count' | null;
   expiresIn?: string | null;
+  expiresValue?: string | null;
+  expiresUnit?: 'day' | 'month' | 'season' | 'year' | null;
+  expiresAt?: number | null;
   exp?: number | null;
+  count?: number | null;
+  usedCount?: number | null;
   createdAt?: number | null;
 }
 
+interface SharePayload {
+  type: 'sub' | 'col' | 'file';
+  name: string;
+  displayName?: string | null;
+  remark?: string | null;
+  tag?: string[];
+  icon?: string | null;
+  isIconColor?: boolean | null;
+  iconFit?: ImageFit | null;
+  token?: string | null;
+  'age-public-key'?: string | null;
+}
+
 interface ShareToken {
-  payload: Share;
+  payload: SharePayload;
   options?: {
-    expiresIn: number | string | undefined;
+    expiresIn?: number | string | undefined;
+    expiresValue?: number | string | undefined;
+    expiresUnit?: 'day' | 'month' | 'season' | 'year' | undefined;
+    exp?: number | string | null | undefined;
+    count?: number | string | undefined;
+    usedCount?: number | string | undefined;
+    mode?: 'duration' | 'datetime' | 'count' | undefined;
   }
 }
 

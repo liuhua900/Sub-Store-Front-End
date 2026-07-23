@@ -4,9 +4,31 @@
       <span>{{ desc }}</span>
       <nut-icon name="tips"></nut-icon>
     </div>
-    <div class="includeUnsupportedProxy">
-      <input type="checkbox" id="includeUnsupportedProxy" name="includeUnsupportedProxy" value="includeUnsupportedProxy" v-model="includeUnsupportedProxy">
-      <label for="includeUnsupportedProxy">包含官方/商店版/未续费订阅不支持的协议</label>
+    <div class="preview-options">
+      <div class="preview-option-item">
+        <input type="checkbox" id="includeUnsupportedProxy" name="includeUnsupportedProxy" value="includeUnsupportedProxy" v-model="includeUnsupportedProxy">
+        <label for="includeUnsupportedProxy">{{ includeUnsupportedProxyLabel }}</label>
+      </div>
+      <div class="preview-option-item">
+        <input
+          type="checkbox"
+          id="prettyYaml"
+          name="prettyYaml"
+          value="prettyYaml"
+          v-model="prettyYaml"
+        >
+        <label for="prettyYaml">{{ prettyYamlLabel }}</label>
+      </div>
+      <div class="preview-option-item">
+        <input
+          type="checkbox"
+          id="displayPreviewInWebPage"
+          name="displayPreviewInWebPage"
+          :checked="appearanceSetting.displayPreviewInWebPage"
+          @change="setDisplayPreviewInWebPage"
+        >
+        <label for="displayPreviewInWebPage">{{ displayPreviewInWebPageLabel }}</label>
+      </div>
     </div>
     <ul class="preview-list">
       <li v-for="platform in platformList" :key="platform.name">
@@ -44,8 +66,8 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref } from 'vue';
-  import { Toast, Dialog } from '@nutui/nutui';
+  import { onMounted, ref, watch } from 'vue';
+  import { Toast } from '@nutui/nutui';
   import json from '@/assets/icons/json.svg';
   import uri from '@/assets/icons/uri.svg';
   import surfboard from '@/assets/icons/surfboard.png';
@@ -74,16 +96,35 @@
   const { appearanceSetting } = storeToRefs(settingsStore);
 
   const includeUnsupportedProxy = ref(false);
+  const prettyYaml = ref(false);
   const { copy, isSupported } = useClipboard();
   const { toClipboard: copyFallback } = useV3Clipboard();
   const { showNotify } = useAppNotifyStore();
-  const { name, displayName, type, url, general, notify, tipsTitle, tipsContent, desc,tipsCancelText, tipsOkText } = defineProps<{
+  const {
+    name,
+    displayName,
+    type,
+    url,
+    general,
+    notify,
+    tipsTitle,
+    tipsContent,
+    desc,
+    tipsCancelText,
+    tipsOkText,
+    includeUnsupportedProxyLabel,
+    prettyYamlLabel,
+    displayPreviewInWebPageLabel,
+  } = defineProps<{
     name: string;
     displayName?: string;
     type: 'sub' | 'collection';
     general: string;
     notify: string;
     desc: string;
+    includeUnsupportedProxyLabel: string;
+    prettyYamlLabel: string;
+    displayPreviewInWebPageLabel: string;
     url?: string;
     tipsTitle?: string;
     tipsContent?: string;
@@ -93,6 +134,56 @@
 
   const { currentUrl: host } = useHostAPI();
 
+  const PREVIEW_INCLUDE_UNSUPPORTED_PROXY_KEY = "preview.includeUnsupportedProxy";
+  const PREVIEW_PRETTY_YAML_KEY = "preview.prettyYaml";
+
+  const getLocalStorageBoolean = (key: string): boolean => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return false;
+    }
+    try {
+      return window.localStorage.getItem(key) === "true";
+    } catch {
+      return false;
+    }
+  };
+
+  const setLocalStorageBoolean = (key: string, value: boolean) => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // ignore localStorage write failures in restricted environments
+    }
+  };
+
+  onMounted(() => {
+    includeUnsupportedProxy.value = getLocalStorageBoolean(PREVIEW_INCLUDE_UNSUPPORTED_PROXY_KEY);
+    prettyYaml.value = getLocalStorageBoolean(PREVIEW_PRETTY_YAML_KEY);
+  });
+
+  watch(includeUnsupportedProxy, (value) => {
+    setLocalStorageBoolean(PREVIEW_INCLUDE_UNSUPPORTED_PROXY_KEY, value);
+  });
+  watch(prettyYaml, (value) => {
+    setLocalStorageBoolean(PREVIEW_PRETTY_YAML_KEY, value);
+  });
+  const setDisplayPreviewInWebPage = async (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    try {
+      await changeAppearanceSetting({
+        appearanceSetting: {
+          displayPreviewInWebPage: input.checked,
+        },
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      input.checked = appearanceSetting.value.displayPreviewInWebPage;
+    }
+  };
   const buildUrlWithQuery = (url: string, query: Record<string, string | boolean>): string => {
     if (!url) {
       return '';
@@ -118,6 +209,9 @@
     if (includeUnsupportedProxy.value) {
       query.includeUnsupportedProxy = true;
     }
+    if (prettyYaml.value) {
+      query.prettyYaml = true;
+    }
     let previewUrl
     if (url) {
       previewUrl = buildUrlWithQuery(url, query);
@@ -126,7 +220,22 @@
         type === "sub" ? "" : "collection/"
         }${encodeURIComponent(name)}${Object.keys(query).length > 0 ? `?${Object.entries(query).map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join('&')}` : ''}`; 
     }
-    return preview ? `/preview?url=${encodeURIComponent(previewUrl)}&name=${encodeURIComponent(displayName || name)}` : previewUrl
+    if (!preview) {
+      return previewUrl;
+    }
+
+    const previewQuery = {
+      url: previewUrl,
+      name: displayName || name,
+      api: host.value,
+    } as Record<string, string | boolean>;
+
+    if (type === "sub" || type === "collection") {
+      previewQuery.sourceType = type;
+      previewQuery.sourceName = name;
+    }
+
+    return buildUrlWithQuery('/preview', previewQuery);
   }
   const targetCopy = async (path: string) => {
     const url = getUrl(path);
@@ -149,7 +258,7 @@
       icon: stash,
     },
     {
-      name: 'Mihomo',
+      name: 'mihomo',
       path: 'ClashMeta',
       icon: clashmeta,
     },
@@ -174,7 +283,7 @@
       icon: surge,
     },
     {
-      name: 'Surge(macOS)',
+      name: 'Surge Mac',
       path: 'SurgeMac',
       icon: surgeMac,
     },
@@ -240,16 +349,31 @@
 </script>
 
 <style lang="scss" scoped>
-  .includeUnsupportedProxy {
-    margin: 4px 0;
+  .preview-options {
+    width: max-content;
+    max-width: 100%;
+    margin: 6px auto 4px;
     display: flex;
+    justify-content: flex-start;
     align-items: center;
-    justify-content: center;
+    column-gap: 18px;
+    row-gap: 8px;
+    flex-wrap: wrap;
+
+    .preview-option-item {
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
     input {
       cursor: pointer;
       padding: 0;
-      margin: 0 4px 0 0;
+      margin: 0;
     }
+
     label {
       cursor: pointer;
     }

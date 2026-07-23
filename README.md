@@ -16,54 +16,7 @@ Advanced Subscription Manager for QX, Loon, Surge, Stash and ShadowRocket.
 
 Core functionalities:
 
-1. Conversion among various formats.
-2. Subscription formatting.
-3. Collect multiple subscriptions in one URL.
-
-## 1. Subscription Conversion
-
-### Supported Input Formats
-
-- [x] SS URI
-- [x] SSR URI
-- [x] SSD URI
-- [x] V2RayN URI
-- [x] QX (SS, SSR, VMess, Trojan, HTTP)
-- [x] Loon (SS, SSR, VMess, Trojan, HTTP)
-- [x] Surge (SS, VMess, Trojan, HTTP)
-- [x] Stash & Clash (SS, SSR, VMess, Trojan, HTTP)
-
-### Supported Target Platforms
-
-- [x] QX
-- [x] Loon
-- [x] Surge
-- [x] Stash & Clash
-- [x] ShadowRocket
-
-## 2. Subscription Formatting
-
-### Filtering
-
-- [x] **Regex filter**
-- [x] **Discard regex filter**
-- [x] **Region filter**
-- [x] **Type filter**
-- [x] **Useless proxies filter**
-- [x] **Script filter**
-
-### Proxy Operations
-
-- [x] **Set property operator**: set some proxy properties such as `udp`,`tfo`
-  , `skip-cert-verify` etc.
-- [x] **Flag operator**: add flags or remove flags for proxies.
-- [x] **Sort operator**: sort proxies by name.
-- [x] **Regex sort operator**: sort proxies by keywords (fallback to normal
-  sort).
-- [x] **Regex rename operator**: replace by regex in proxy names.
-- [x] **Regex delete operator**: delete by regex in proxy names.
-- [x] **Script operator**: modify proxy by script.
-
+[Sub-Store](https://github.com/sub-store-org/Sub-Store)
 
 ### Development
 
@@ -72,7 +25,7 @@ Core functionalities:
 Commit message follows [@commitlint/config-angular](https://github.com/conventional-changelog/commitlint/tree/master/@commitlint/config-angular)
 
 #### Created in the following version:
-- pnpm v7.3.0
+- pnpm v11.0.9 via Corepack
 - Vite v2.9.9
 - Vue v3.2
 - Pinia v2
@@ -83,6 +36,9 @@ This project is using [Font Awesome](https://fontawesome.com/icons/check?s=regul
 
 #### Start 
 ```bash
+# enable the pinned package manager
+corepack enable
+
 # install dependencies
 pnpm i
 

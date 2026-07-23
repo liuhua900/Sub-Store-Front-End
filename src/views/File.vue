@@ -50,10 +50,10 @@
             </router-link>
           </li>
           <li>
-            <router-link to="/edit/files/UNTITLED-mihomoProfile" class="router-link">
+            <router-link to="/edit/files/UNTITLED-mihomoConfig" class="router-link">
               <img src="@/assets/icons/clashmeta_color.png" alt="">
-              <span>{{ $t(`filePage.type.mihomoProfile`) }}</span>
-              <small>{{ $t(`filePage.type.mihomoProfileTips`) }}</small>
+              <span>{{ $t(`filePage.type.mihomoConfig`) }}</span>
+              <small>{{ $t(`filePage.type.mihomoConfigTips`) }}</small>
             </router-link>
           </li>
         </ul>
@@ -107,7 +107,7 @@
 
     <!-- 页面内容 -->
     <!-- 有数据 -->
-    <div class="subs-list-wrapper">
+    <div class="subs-list-wrapper" :class="{ 'dual-column-mode': isDualColumnMode }">
       <div v-if="tags && tags.length > 0" ref="radioWrapperRef" class="radio-wrapper" >
         <!-- <nut-radiogroup v-model="tag" direction="horizontal"> -->
           <!-- <nut-radio v-for="i in tags" shape="button" :label="String(i.value)">{{ i.label }}</nut-radio> -->
@@ -117,7 +117,9 @@
       <div class="subs-list-container" :style="{ paddingTop: `${radioWrapperHeight}px` }">
         <div v-if="hasFiles">
           <draggable
-            v-model="files"
+            class="files-draggable-list"
+            :class="{ 'dual-column': isDualColumnMode }"
+            v-model="filteredFiles"
             item-key="name"
             :scroll-sensitivity="200"
             :force-fallback="true"
@@ -135,11 +137,12 @@
             @end="handleDragEnd(files)"
           >
             <template #item="{ element }">
-              <div v-show="shouldShowElement(element)" :key="element.name" class="draggable-item">
+              <div :key="element.name" class="draggable-item">
                 <FileListItem
                   :file="element"
                   type="file"
                   :disabled="swipeDisabled"
+                  :is-dual-column="isDualColumnMode"
                   @share="handleShare"
                 />
               </div>
@@ -149,7 +152,7 @@
       </div>
     </div>
     <!-- 没有数据 -->
-    <div v-if="!isLoading && fetchResult && !hasFiles" class="no-data-wrapper">
+    <div v-if="!isLoading && fetchResult && !hasFiles" class="empty-state-wrapper">
       <nut-empty image="empty">
         <template #description>
           <h3>{{ $t(`filePage.emptySub.title`) }}</h3>
@@ -164,19 +167,19 @@
     </div>
 
     <!-- 数据加载失败 -->
-    <div v-if="!isLoading && !fetchResult" class="no-data-wrapper">
+    <div v-if="!isLoading && !fetchResult" class="empty-state-wrapper">
       <nut-empty image="error" style="padding: 32px 30px">
         <template #description>
           <h3>{{ $t(`subPage.loadFailed.title`) }}</h3>
           <p>{{ $t(`subPage.loadFailed.desc`) }}</p>
-          <p>{{ $t(`subPage.loadFailed.followOfficialChannel`) }}</p>
+          <a href="https://telegram.me/zhetengsha/218" style="color: var(--primary-color)"> {{ $t(`magicPath.troubleshooting`) }}</a>
           <p>
-            {{ $t(`subPage.loadFailed.officialChannel`) }}
+            
             <a
-              href="https://t.me/cool_scripts"
+              href="/aboutUs"
               style="color: var(--primary-color)"
             >
-              Cool Scripts
+              {{ $t(`subPage.loadFailed.about`) }}
             </a>
           </p>
         </template>
@@ -184,27 +187,21 @@
       <nut-button icon="refresh" type="primary" @click="refresh">
         {{ $t(`subPage.loadFailed.btn`) }}
       </nut-button>
-      <a
+      <!-- <a
         href="https://www.notion.so/Sub-Store-6259586994d34c11a4ced5c406264b46"
         target="_blank"
       >
         <span>{{ $t(`subPage.loadFailed.doc`) }}</span>
         <font-awesome-icon icon="fa-solid fa-arrow-up-right-from-square" />
-      </a>
+      </a> -->
     </div>
-    <SharePopup
-      v-model:visible="sharePopupVisible"
-      :data="shareData"
-      action="add"
-    />
   </div>
 </template>
 
 <script lang="ts" setup>
 import { storeToRefs } from "pinia";
-import { ref, toRaw, onMounted, computed, watch, nextTick } from "vue";
+import { ref, toRaw, onMounted, computed, watch } from "vue";
 import draggable from "vuedraggable";
-import SharePopup from "./share/SharePopup.vue";
 
 import { useAppNotifyStore } from "@/store/appNotify";
 import { Dialog, Toast } from '@nutui/nutui';
@@ -213,6 +210,7 @@ import { useSubsApi } from "@/api/subs";
 import { useFilesApi } from '@/api/files';
 import FileListItem from "@/components/FileListItem.vue";
 import { useGlobalStore } from "@/store/global";
+import { useListSearchStore } from "@/store/listSearch";
 import { useSubsStore } from "@/store/subs";
 import { useSettingsStore } from '@/store/settings';
 import { useSystemStore } from "@/store/system";
@@ -220,7 +218,12 @@ import { useMethodStore } from '@/store/methodStore';
 import { initStores } from "@/utils/initApp";
 import { useI18n } from "vue-i18n";
 import { useBackend } from "@/hooks/useBackend";
+import { useFilteredDraggableList } from "@/hooks/useFilteredDraggableList";
+import { useListViewMode } from "@/hooks/useListViewMode";
+import { useTagBarHeight } from "@/hooks/useTagBarHeight";
 import { isMobile } from "@/utils/isMobile";
+import { getShareCreatePath } from "@/utils/share";
+import { listItemMatchesSearch, shouldSearchListRemark } from "@/utils/listSearch";
 
 import { useRouter } from "vue-router";
 const router = useRouter();
@@ -256,7 +259,9 @@ const subsStore = useSubsStore();
 const globalStore = useGlobalStore();
 const systemStore = useSystemStore();
 const settingsStore = useSettingsStore();
+const listSearchStore = useListSearchStore();
 const { appearanceSetting } = storeToRefs(settingsStore);
+const { effectiveListViewMode } = useListViewMode();
 const { navBarHeight } = storeToRefs(systemStore);
 const { hasFiles, files } = storeToRefs(subsStore);
 const {
@@ -267,6 +272,9 @@ const {
   // showFloatingRefreshButton,
 } = storeToRefs(globalStore);
 const swipeDisabled = ref(false);
+const isDualColumnMode = computed(() => {
+  return effectiveListViewMode.value === "dual-column";
+});
 const touchStartY = ref(null);
 const touchStartX = ref(null);
 const sortFailed = ref(false);
@@ -301,31 +309,15 @@ const tags = computed(() => {
   }
   return result;
 });
-const radioWrapperRef = ref(null);
-const radioWrapperHeight = ref(0);
-
-// 更新标签栏高度
-const updateRadioWrapperHeight = () => {
-  nextTick(() => {
-    if (radioWrapperRef.value) {
-      radioWrapperHeight.value = radioWrapperRef.value.offsetHeight;
-    } else {
-      radioWrapperHeight.value = 0;
-    }
-  });
-};
+const { tagBarRef: radioWrapperRef, tagBarHeight: radioWrapperHeight } = useTagBarHeight([
+  tag,
+  () => tags.value,
+]);
 
 const tagNavBarHeight = computed(() => {
   return navBarHeight.value;
 });
 
-watch(tag, () => {
-  updateRadioWrapperHeight();
-});
-
-watch(() => tags.value, () => {
-  updateRadioWrapperHeight();
-}, { deep: true, immediate: true });
 onMounted(() => {
   methodStore.registerMethod("addFile", editFile);
 });
@@ -394,16 +386,8 @@ const handleDragEnd = (dataValue: any) => {
   swipeDisabled.value = false;
 };
 
-const shareData = ref(null);
-const sharePopupVisible = ref(false);
-const handleShare = (element, type) => {
-  console.log("share", element);
-  shareData.value = {
-    displayName: element.displayName || "",
-    name: element.name,
-    type: type as "file",
-  };
-  sharePopupVisible.value = true;
+const handleShare = (element) => {
+  router.push(getShareCreatePath("file", element.name));
 };
 const upload = async() => {
   try {
@@ -487,11 +471,18 @@ const setTag = (current) => {
   // 增加滚动到顶部
   scrollToTop();
 };
-const shouldShowElement = (element) => {
+const shouldShowElementByTag = (element) => {
   if(tag.value === 'all') return true;
   if(tag.value === 'untagged') return !Array.isArray(element.tag) || element.tag.length === 0;
   return element.tag?.includes(tag.value);
 };
+const shouldShowElement = (element) => {
+  return shouldShowElementByTag(element)
+    && listItemMatchesSearch(element, listSearchStore.normalizedQuery, {
+      includeRemark: shouldSearchListRemark(appearanceSetting.value),
+    });
+};
+const filteredFiles = useFilteredDraggableList(files, shouldShowElement);
 </script>
 
 <style lang="scss" scoped>
@@ -507,7 +498,7 @@ const shouldShowElement = (element) => {
       cursor: pointer;
       margin-left: 4px;
     }
-  }
+}
 .drag-btn-wrapper {
   position: relative;
   z-index: 999;
@@ -604,36 +595,6 @@ const shouldShowElement = (element) => {
   }
 }
 
-.no-data-wrapper {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-
-  h3 {
-    font-size: 18px;
-    margin-bottom: 12px;
-    color: var(--primary-text-color);
-  }
-
-  p {
-    font-size: 14px;
-    color: var(--comment-text-color);
-  }
-
-  a {
-    font-size: 14px;
-    margin-top: 24px;
-    color: var(--comment-text-color);
-
-    span {
-      margin-right: 4px;
-    }
-  }
-}
-
 .list-title {
   padding-left: 8px;
   font-weight: bold;
@@ -672,7 +633,8 @@ const shouldShowElement = (element) => {
 .draggable-item {
   margin-top: 12px;
   margin-bottom: 12px;
-  // overflow: hidden;
+  border-radius: var(--item-card-radios);
+  overflow: hidden;
 }
 
 .chosensub {
@@ -685,6 +647,22 @@ const shouldShowElement = (element) => {
   width: calc(100% - 1.5rem);
   margin-left: auto;
   margin-right: auto;
+
+  .files-draggable-list.dual-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+    padding-top: 12px;
+
+    > .draggable-item {
+      min-width: 0;
+      margin: 0;
+      border-radius: var(--item-card-radios);
+      overflow: hidden;
+    }
+  }
+
   .radio-wrapper {
     box-sizing: border-box;
     width: 100%;
@@ -697,6 +675,7 @@ const shouldShowElement = (element) => {
     backdrop-filter: blur(var(--nav-bar-blur));
     -webkit-backdrop-filter: blur(var(--nav-bar-blur));
     background: var(--nav-bar-color);
+    pointer-events: none;
     @include centered-fixed-container;
       @media screen and (min-width: 768px) {
         border-radius: var(--item-card-radios);
@@ -708,6 +687,7 @@ const shouldShowElement = (element) => {
       margin: 0px 5px;
       padding: 7.5px 2.5px 4px;
       cursor: pointer;
+      pointer-events: auto;
       -webkit-user-select: none;
       user-select: none;
       border-bottom: 1px solid transparent;

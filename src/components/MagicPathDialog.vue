@@ -13,8 +13,21 @@
     :close-on-click-overlay="false"
   >
     <div class="magic-path-container">
-      <div class="title">{{ $t('magicPath.title') }}</div>
-      <div class="description" v-html="$t('magicPath.description')"></div>
+      <div class="dialog-header">
+        <div class="title">{{ $t('magicPath.title') }}</div>
+        <LanguageSwitcherButton
+          class="dialog-language-switch"
+        />
+      </div>
+      <div class="description">
+        <p>{{ $t('magicPath.description') }}</p>
+        <p>{{ $t('magicPath.descriptionFormatsLabel') }}</p>
+        <ul>
+          <li>{{ $t('magicPath.descriptionFormatPath') }}</li>
+          <li>{{ $t('magicPath.descriptionFormatHost') }}</li>
+          <li>{{ $t('magicPath.descriptionFormatUrl') }}</li>
+        </ul>
+      </div>
 
       <!-- 显示URL参数错误信息 - 仅在非URL参数指定API的情况下显示 -->
       <div v-if="props.urlApiError && !props.urlApiValue" class="url-api-error">
@@ -41,11 +54,11 @@
             <template v-else-if="inputType === 'host'">
               <span class="preview-protocol">http://</span>
               <span class="preview-host">{{ parsedHost }}</span>
-              <span class="preview-path">/{{ parsedPath }}</span>
+              <span class="preview-path">{{ (parsedPath && parsedPath !== '/') ? `/${parsedPath}` : '' }}</span>
             </template>
             <template v-else>
-              <span class="preview-origin">{{ currentOrigin }}/</span>
-              <span class="preview-path">{{ parsedPath }}</span>
+              <span class="preview-origin">{{ currentOrigin }}</span>
+              <span class="preview-path">{{ (parsedPath && parsedPath !== '/') ? `/${parsedPath}` : '' }}</span>
             </template>
           </div>
           <div class="preview-type">
@@ -75,7 +88,7 @@
       <div class="info">
         <p>{{ $t('magicPath.info') }}</p>
         <p>{{ $t('magicPath.customInfo') }}</p>
-        <p><a href="https://t.me/zhetengsha/1068" target="_blank">{{ $t('magicPath.troubleshooting') }}</a></p>
+        <p><a href="https://telegram.me/zhetengsha/218" target="_blank">{{ $t('magicPath.troubleshooting') }}</a></p>
       </div>
     </div>
   </nut-popup>
@@ -88,10 +101,11 @@ import { useHostAPI } from '@/hooks/useHostAPI';
 import { useAppNotifyStore } from '@/store/appNotify';
 import { isMobile } from '@/utils/isMobile';
 import axios from 'axios';
+import LanguageSwitcherButton from '@/components/LanguageSwitcherButton.vue';
 
 const { t } = useI18n();
 const { showNotify } = useAppNotifyStore();
-const { addApi, setCurrent } = useHostAPI();
+const { apis, addApi, setCurrent } = useHostAPI();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -154,16 +168,21 @@ const handleSubmit = async () => {
         return;
       }
 
-      // 添加API并设置为当前API
-      const apiName = `Custom_${new Date().getTime()}`;
-      const addResult = await addApi({ name: apiName, url: apiUrl });
+      const existingApi = apis.value.find(api => api.url === apiUrl);
+      if (existingApi) {
+        setCurrent(existingApi.name);
+      } else {
+        // 添加API并设置为当前API
+        const apiName = `Custom_${new Date().getTime()}`;
+        const addResult = await addApi({ name: apiName, url: apiUrl });
 
-      if (!addResult) {
-        // addApi内部已经显示了错误通知，这里不需要再设置error
-        return;
+        if (!addResult) {
+          // addApi内部已经显示了错误通知，这里不需要再设置error
+          return;
+        }
+
+        setCurrent(apiName);
       }
-
-      setCurrent(apiName);
 
       showNotify({
         title: t('magicPath.success'),
@@ -349,13 +368,13 @@ watchEffect(() => {
       parsedPath.value = '';
     }
 
-    previewUrl.value = `http://${parsedHost.value}/${parsedPath.value}`;
+    previewUrl.value = `http://${parsedHost.value}${(parsedPath.value && parsedPath.value !== '/') ? `/${parsedPath.value}` : ''}`;
   } else {
     // 仅路径
     inputType.value = 'path';
     parsedPath.value = input.replace(/^\/+/, '');
     parsedHost.value = '';
-    previewUrl.value = `${currentOrigin.value}/${parsedPath.value}`;
+    previewUrl.value = `${currentOrigin.value}${(parsedPath.value && parsedPath.value !== '/') ? `/${parsedPath.value}` : ''}`;
   }
 });
 </script>
@@ -365,6 +384,28 @@ watchEffect(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
+
+  .dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 32px;
+    margin-bottom: 12px;
+
+    .title {
+      flex: 1;
+      margin-bottom: 0;
+      line-height: 1.25;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .dialog-language-switch {
+      flex-shrink: 0;
+      color: var(--primary-text-color);
+    }
+  }
 
   .title {
     font-size: 18px;
@@ -376,19 +417,24 @@ watchEffect(() => {
 
   .description {
     font-size: 14px;
-    margin-bottom: 20px;
-    text-align: center;
+    // margin-bottom: 20px;
+    text-align: left;
     color: var(--second-text-color);
 
-    :deep(br) {
-      display: block;
-      content: "";
-      margin-top: 8px;
+    p {
+      margin: 0 0 4px;
     }
 
-    :deep(a) {
-      color: var(--primary-color);
-      text-decoration: none;
+    ul {
+      list-style: disc;
+      display: inline-block;
+      text-align: left;
+      margin: 4px 0 0;
+      padding-left: 1.4em;
+    }
+
+    li {
+      margin: 2px 0;
     }
   }
 
@@ -520,7 +566,7 @@ watchEffect(() => {
   .info {
     font-size: 12px;
     color: var(--comment-text-color);
-    text-align: center;
+    text-align: left;
     background-color: var(--card-color);
     padding: 10px;
     border-radius: 8px;

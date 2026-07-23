@@ -32,6 +32,23 @@
           <nut-switch class="my-switch" v-model="awIsShowIcon" size="mini" @change="setIsShowIcon" />
         </template>
       </nut-cell>
+      <nut-cell class="cell-item" :desc="iconFitName" @click="()=>{showIconFitPicker=true}" is-link>
+        <template #title>
+          <span class="label-with-tip">
+            {{ $t(`moreSettingPage.iconFit`) }}
+            <nut-icon
+              name="tips"
+              size="14"
+              role="button"
+              :aria-label="$t(`imageFit.tips.title`)"
+              @click.stop="openImageFitTips"
+            />
+          </span>
+        </template>
+      </nut-cell>
+      <DesktopPicker v-model="iconFitValue" v-model:visible="showIconFitPicker" :columns="imageFitColumns"
+        :title="$t(`moreSettingPage.iconFit`)" @confirm="iconFitConfirm">
+      </DesktopPicker>
     </nut-cell-group>
     <nut-cell-group>
 
@@ -53,11 +70,17 @@
       <nut-cell class="cell-item" :title="$t(`moreSettingPage.subProgress.title`)" :desc="subProgressStyleName"
         @click="()=>{showSubProgressPicker=true}" is-link>
       </nut-cell>
-      <nut-picker v-model="subProgressStyleValue" v-model:visible="showSubProgressPicker" :columns="[
+      <DesktopPicker v-model="subProgressStyleValue" v-model:visible="showSubProgressPicker" :columns="[
         { text: $t(`moreSettingPage.subProgress.hidden`), value: 'hidden' },
         { text: $t(`moreSettingPage.subProgress.background`), value: 'background' }
       ]" :title="$t(`moreSettingPage.subProgress.title`)" @confirm="subProgressStyleConfirm">
-      </nut-picker>
+      </DesktopPicker>
+      <nut-cell :title="$t(`moreSettingPage.hideOfficialSiteButton`)" class="cell-item">
+        <template v-slot:link>
+          <nut-switch class="my-switch" v-model="hidePublicLinkActionButton" size="mini"
+            @change="setHidePublicLinkActionButton" />
+        </template>
+      </nut-cell>
 
 
       <nut-cell :title="$t(`moreSettingPage.displayPreviewInWebPage`)" class="cell-item">
@@ -66,11 +89,41 @@
             @change="setDisplayPreviewInWebPage" />
         </template>
       </nut-cell>
-      <nut-cell :title="$t(`moreSettingPage.isEditorCommon`)" class="cell-item">
-        <template v-slot:link>
-          <nut-switch class="my-switch" v-model="awEditorCommon" size="mini" @change="setEditorCommon" />
-        </template>
+      <nut-cell class="cell-item" :title="$t(`moreSettingPage.editorGrouping.title`)" :desc="editorGroupingModeName"
+        @click="()=>{showEditorGroupingModePicker=true}" is-link>
       </nut-cell>
+      <DesktopPicker v-model="editorGroupingModeValue" v-model:visible="showEditorGroupingModePicker" :columns="[
+        { text: $t(`moreSettingPage.editorGrouping.editOnly`), value: 'edit-only' },
+        { text: $t(`moreSettingPage.editorGrouping.disabled`), value: 'disabled' },
+        { text: $t(`moreSettingPage.editorGrouping.always`), value: 'always' }
+      ]" :title="$t(`moreSettingPage.editorGrouping.title`)" @confirm="editorGroupingModeConfirm">
+      </DesktopPicker>
+      <nut-cell class="cell-item" :title="$t(`moreSettingPage.editorCommon.title`)" :desc="editorCommonDisplayModeName"
+        @click="()=>{showEditorCommonDisplayModePicker=true}" is-link>
+      </nut-cell>
+      <DesktopPicker v-model="editorCommonDisplayModeValue" v-model:visible="showEditorCommonDisplayModePicker" :columns="[
+        { text: $t(`moreSettingPage.editorDisplayMode.expanded`), value: 'expanded' },
+        { text: $t(`moreSettingPage.editorDisplayMode.collapsed`), value: 'collapsed' },
+        { text: $t(`moreSettingPage.editorDisplayMode.hidden`), value: 'hidden' }
+      ]" :title="$t(`moreSettingPage.editorCommon.title`)" @confirm="editorCommonDisplayModeConfirm">
+      </DesktopPicker>
+      <nut-cell class="cell-item" :title="$t(`moreSettingPage.actionButtons.title`)" :desc="actionButtonsDisplayModeName"
+        @click="()=>{showActionButtonsDisplayModePicker=true}" is-link>
+      </nut-cell>
+      <DesktopPicker v-model="actionButtonsDisplayModeValue" v-model:visible="showActionButtonsDisplayModePicker" :columns="[
+        { text: $t(`moreSettingPage.actionButtons.responsive`), value: 'responsive' },
+        { text: $t(`moreSettingPage.actionButtons.compact`), value: 'compact' },
+        { text: $t(`moreSettingPage.actionButtons.loose`), value: 'loose' }
+      ]" :title="$t(`moreSettingPage.actionButtons.title`)" @confirm="actionButtonsDisplayModeConfirm">
+      </DesktopPicker>
+      <nut-cell class="cell-item" :title="$t(`moreSettingPage.manualSubscriptions.title`)" :desc="manualSubscriptionsDisplayModeName"
+        @click="()=>{showManualSubscriptionsDisplayModePicker=true}" is-link>
+      </nut-cell>
+      <DesktopPicker v-model="manualSubscriptionsDisplayModeValue" v-model:visible="showManualSubscriptionsDisplayModePicker" :columns="[
+        { text: $t(`moreSettingPage.editorDisplayMode.expanded`), value: 'expanded' },
+        { text: $t(`moreSettingPage.editorDisplayMode.collapsed`), value: 'collapsed' }
+      ]" :title="$t(`moreSettingPage.manualSubscriptions.title`)" @confirm="manualSubscriptionsDisplayModeConfirm">
+      </DesktopPicker>
     </nut-cell-group>
 
     <nut-cell-group v-if="shareBtnVisible">
@@ -83,21 +136,34 @@
     </nut-cell-group>
 
     <nut-cell-group>
-      <nut-cell :title="$t(`moreSettingPage.showFloatingRefreshButton`)" class="cell-item">
-        <template v-slot:link>
-          <nut-switch class="my-switch" v-model="awShowFloatingRefreshButton" size="mini"
-            @change="setShowFloatingRefreshButton" />
-        </template>
+      <nut-cell class="cell-item" :title="$t(`moreSettingPage.createItemPosition.title`)" :desc="createItemPositionName"
+        @click="()=>{showCreateItemPositionPicker=true}" is-link>
       </nut-cell>
+      <DesktopPicker v-model="createItemPositionValue" v-model:visible="showCreateItemPositionPicker" :columns="[
+        { text: $t(`moreSettingPage.createItemPosition.top`), value: 'top' },
+        { text: $t(`moreSettingPage.createItemPosition.bottom`), value: 'bottom' }
+      ]" :title="$t(`moreSettingPage.createItemPosition.title`)" @confirm="createItemPositionConfirm">
+      </DesktopPicker>
       <nut-cell :title="$t(`moreSettingPage.showFloatingAddButton`)" class="cell-item">
         <template v-slot:link>
           <nut-switch class="my-switch" v-model="awShowFloatingAddButton" size="mini"
             @change="setShowFloatingAddButton" />
         </template>
       </nut-cell>
+      <nut-cell :title="$t(`moreSettingPage.showFloatingRefreshButton`)" class="cell-item">
+        <template v-slot:link>
+          <nut-switch class="my-switch" v-model="awShowFloatingRefreshButton" size="mini"
+            @change="setShowFloatingRefreshButton" />
+        </template>
+      </nut-cell>
       <nut-cell :title="$t(`moreSettingPage.tabBar2`)" class="cell-item">
         <template v-slot:link>
           <nut-switch class="my-switch" v-model="awtabBar2" size="mini" @change="settabBar2" />
+        </template>
+      </nut-cell>
+      <nut-cell :title="$t(`moreSettingPage.tabBar3`)" class="cell-item">
+        <template v-slot:link>
+          <nut-switch class="my-switch" v-model="awtabBar3" size="mini" @change="settabBar3" />
         </template>
       </nut-cell>
       <nut-cell :title="$t(`moreSettingPage.tabBar`)" class="cell-item">
@@ -106,17 +172,6 @@
         </template>
       </nut-cell>
     </nut-cell-group>
-    <nut-cell-group>
-      <nut-cell class="cell-item" :title="$t(`moreSettingPage.gistUpload.title`)" :desc="gistUploadName"
-        @click="()=>{showGistUploadPicker=true}" is-link>
-      </nut-cell>
-      <nut-picker v-model="gistUploadValue" v-model:visible="showGistUploadPicker" :columns="[
-        { text: $t(`moreSettingPage.gistUpload.base64`), value: 'base64' },
-        { text: $t(`moreSettingPage.gistUpload.plaintext`), value: 'plaintext' }
-      ]" :title="$t(`moreSettingPage.gistUpload.title`)" @confirm="gistUploadConfirm">
-      </nut-picker>
-    </nut-cell-group>
-
     <nut-cell-group>
       <nut-cell :title="$t(`themeSettingPage.auto`)" class="cell-item">
         <template v-slot:link>
@@ -137,7 +192,7 @@
       <nut-cell v-else class="cell-item" :title="$t(`themeSettingPage.themeSettingTitle`)" :desc="themeDes.nameDes"
         @click="openPicker('name')" is-link />
     </nut-cell-group>
-    <nut-picker v-model="selectedValue" v-model:visible="showThemePicker" :columns="pickerColumn"
+    <DesktopPicker v-model="selectedValue" v-model:visible="showThemePicker" :columns="pickerColumn"
       :title="$t(`themeSettingPage.themePicker.title`)" :cancel-text="$t(`themeSettingPage.themePicker.cancel`)"
       :ok-text="$t(`themeSettingPage.themePicker.confirm`)" @confirm="confirm" />
     <nut-cell-group>
@@ -151,18 +206,19 @@
 </template>
 
 <script lang="ts" setup>
+  import DesktopPicker from '@/components/DesktopPicker.vue';
   import { initStores } from "@/utils/initApp";
   import { Dialog, Toast } from '@nutui/nutui';
   import { useSettingsStore } from '@/store/settings';
   import { storeToRefs } from 'pinia';
   import { useGlobalStore } from '@/store/global';
-  import { useMousePicker } from '@/hooks/useMousePicker';
   import { useThemes } from '@/hooks/useThemes';
   import { computed, ref, toRaw, watchEffect } from 'vue';
   import { useI18n } from 'vue-i18n';
   import { useAppNotifyStore } from "@/store/appNotify";
   import { useSettingsApi } from "@/api/settings";
   import { useBackend } from "@/hooks/useBackend";
+  import { DEFAULT_IMAGE_FIT, IMAGE_FIT_OPTIONS, normalizeImageFit, type ImageFit } from "@/utils/iconFit";
   // import { Dialog } from '@nutui/nutui';
 
   const { t } = useI18n();
@@ -183,8 +239,8 @@
     // subProgressStyle,
   } = storeToRefs(globalStore);
   // 外观设置
-  const { changeAppearanceSetting, changeSettings } = settingsStore;
-  const { appearanceSetting, gistUpload } = storeToRefs(settingsStore);
+  const { changeAppearanceSetting } = settingsStore;
+  const { appearanceSetting } = storeToRefs(settingsStore);
   const { showNotify } = useAppNotifyStore();
   const { icon, env } = useBackend();
   const InputHostApi = ref('');
@@ -194,31 +250,52 @@
   const awIsDefaultIcon = ref(false);
   const awIsShowIcon = ref(true);
   const awIsSubItemMenuFold = ref(true);
-  const awEditorCommon = ref(false);
   const awSimpleReicon = ref(true);
   const awSimpleShowRemark = ref(false);
   const awShowFloatingRefreshButton = ref(false);
   const awShowFloatingAddButton = ref(true);
+  const createItemPositionValue = ref<CreateItemPosition[]>(['bottom']);
   const awDisplayPreviewInWebPage = ref(true);
   const invalidShareFakeNode = ref(false);
   const awtabBar = ref(true);
   const awtabBar2 = ref(true);
+  const awtabBar3 = ref(false);
+  const hidePublicLinkActionButton = ref(false);
   // const isEditing = ref(false);
   const isInit = ref(false);
   const subProgressStyleValue = ref(['hidden']);
-  const gistUploadValue = ref(['base64']);
+  const iconFitValue = ref<ImageFit[]>([DEFAULT_IMAGE_FIT]);
+  const editorCommonDisplayModeValue = ref<EditorCommonDisplayMode[]>(['expanded']);
+  const actionButtonsDisplayModeValue = ref<ActionButtonsDisplayMode[]>(['responsive']);
+  const manualSubscriptionsDisplayModeValue = ref<EditorSectionFoldMode[]>(['collapsed']);
+  const editorGroupingModeValue = ref<EditorGroupingMode[]>(['edit-only']);
 
   const pickerType = ref('');
   const autoSwitch = ref(false);
   const showThemePicker = ref(false);
   // const isEditLoading = ref(false);
   const showSubProgressPicker = ref(false);
+  const showIconFitPicker = ref(false);
+  const showCreateItemPositionPicker = ref(false);
+  const showEditorCommonDisplayModePicker = ref(false);
+  const showActionButtonsDisplayModePicker = ref(false);
+  const showManualSubscriptionsDisplayModePicker = ref(false);
+  const showEditorGroupingModePicker = ref(false);
   const shareBtnVisible = computed(() => {
     return env.value?.feature?.share;
   });
   const subProgressStyleName = computed(() => {
     return t(`moreSettingPage.subProgress.${subProgressStyleValue.value}`)
   })
+  const imageFitColumns = computed(() => {
+    return IMAGE_FIT_OPTIONS.map((value) => ({
+      text: t(`imageFit.${value}`),
+      value,
+    }));
+  });
+  const iconFitName = computed(() => {
+    return t(`imageFit.${iconFitValue.value[0] || DEFAULT_IMAGE_FIT}`);
+  });
   const subProgressStyleConfirm = ({ selectedValue }) => {
     // globalStore.setSubProgressStyle(selectedValue[0]);
     const data = {
@@ -227,15 +304,78 @@
     }
     changeAppearanceSetting({ appearanceSetting: data });
   };
-  const showGistUploadPicker = ref(false);
-
-  const gistUploadName = computed(() => {
-    return t(`moreSettingPage.gistUpload.${gistUploadValue.value}`)
-  })
-  const gistUploadConfirm = ({ selectedValue }) => {
-    changeSettings({
-      gistUpload: selectedValue[0]
+  const iconFitConfirm = ({ selectedValue }) => {
+    const iconFit = normalizeImageFit(selectedValue[0]);
+    iconFitValue.value = [iconFit];
+    const data = {
+      ...appearanceSetting.value,
+      iconFit,
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
+  const openImageFitTips = () => {
+    Dialog({
+      title: t("imageFit.tips.title"),
+      content: t("imageFit.tips.content"),
+      popClass: "auto-dialog image-fit-tips-dialog",
+      noCancelBtn: true,
+      okText: t("imageFit.tips.close"),
+      closeOnClickOverlay: true,
+      closeOnPopstate: true,
     });
+  };
+  const createItemPositionName = computed(() => {
+    return t(`moreSettingPage.createItemPosition.${createItemPositionValue.value[0]}`);
+  });
+  const createItemPositionConfirm = ({ selectedValue }) => {
+    const data = {
+      ...appearanceSetting.value,
+      createItemPosition: selectedValue[0]
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
+  const editorCommonDisplayModeName = computed(() => {
+    return t(`moreSettingPage.editorDisplayMode.${editorCommonDisplayModeValue.value[0] || 'expanded'}`);
+  });
+  const editorCommonDisplayModeConfirm = ({ selectedValue }) => {
+    const editorCommonDisplayMode = selectedValue[0] || 'expanded';
+    const data = {
+      ...appearanceSetting.value,
+      editorCommonDisplayMode,
+      isEditorCommon: editorCommonDisplayMode !== 'hidden',
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
+  const actionButtonsDisplayModeName = computed(() => {
+    return t(`moreSettingPage.actionButtons.${actionButtonsDisplayModeValue.value[0] || 'responsive'}`);
+  });
+  const actionButtonsDisplayModeConfirm = ({ selectedValue }) => {
+    const data = {
+      ...appearanceSetting.value,
+      actionButtonsDisplayMode: selectedValue[0] || 'responsive',
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
+  const editorGroupingModeName = computed(() => {
+    const localeKey = editorGroupingModeValue.value[0] === 'edit-only' ? 'editOnly' : editorGroupingModeValue.value[0] || 'editOnly';
+    return t(`moreSettingPage.editorGrouping.${localeKey}`);
+  });
+  const editorGroupingModeConfirm = ({ selectedValue }) => {
+    const data = {
+      ...appearanceSetting.value,
+      editorGroupingMode: selectedValue[0] || 'edit-only',
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
+  const manualSubscriptionsDisplayModeName = computed(() => {
+    return t(`moreSettingPage.editorDisplayMode.${manualSubscriptionsDisplayModeValue.value[0] || 'collapsed'}`);
+  });
+  const manualSubscriptionsDisplayModeConfirm = ({ selectedValue }) => {
+    const data = {
+      ...appearanceSetting.value,
+      manualSubscriptionsDisplayMode: selectedValue[0] || 'collapsed'
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
   };
   const setSimpleMode = (isSimpleMode: boolean) => {
     // globalStore.setSimpleMode(isSimpleMode);
@@ -282,15 +422,6 @@
     changeAppearanceSetting({ appearanceSetting: data });
   };
 
-  const setEditorCommon = (isEditorCommon: boolean) => {
-    // globalStore.setEditorCommon(isEditorCommon);
-    const data = {
-      ...appearanceSetting.value,
-      isEditorCommon: isEditorCommon
-    }
-    changeAppearanceSetting({ appearanceSetting: data });
-  };
-
   const setSimpleReicon = (isSimpleReicon: boolean) => {
     // globalStore.setSimpleReicon(isSimpleReicon);
     const data = {
@@ -333,6 +464,13 @@
     }
     changeAppearanceSetting({ appearanceSetting: data });
   };
+  const setHidePublicLinkActionButton = (value: boolean) => {
+    const data = {
+      ...appearanceSetting.value,
+      hidePublicLinkActionButton: value
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
   const setInvalidShareFakeNode = (invalidShareFakeNode: boolean) => {
     const data = {
       ...appearanceSetting.value,
@@ -356,6 +494,13 @@
     }
     changeAppearanceSetting({ appearanceSetting: data });
   };
+  const settabBar3 = (istabBar3: boolean) => {
+    const data = {
+      ...appearanceSetting.value,
+      istabBar3: istabBar3
+    }
+    changeAppearanceSetting({ appearanceSetting: data });
+  };
 
   
   
@@ -363,7 +508,6 @@
   const { changeTheme } = settingsStore;
   const { theme } = storeToRefs(settingsStore);
   const { pickerList, pickerLightList, pickerDarkList, isAuto } = useThemes();
-  useMousePicker();
   const selectedValue = ref(['dark']);
 
   const themeDes = computed(() => {
@@ -426,7 +570,8 @@
         try {
             const res = await useSettingsApi().restoreSettings({ content: JSON.stringify({
               settings: {
-                istabBar2: false
+                istabBar2: false,
+                istabBar3: false
               }
             }) });
             if (res?.data?.status === "success") {
@@ -539,18 +684,24 @@
     LeftRight.value = appearanceSetting.value.isLeftRight;
     awIsDefaultIcon.value = appearanceSetting.value.isDefaultIcon;
     awIsShowIcon.value = appearanceSetting.value.isShowIcon;
+    iconFitValue.value = [normalizeImageFit(appearanceSetting.value.iconFit)];
     awIsSubItemMenuFold.value = appearanceSetting.value.isSubItemMenuFold;
-    awEditorCommon.value = appearanceSetting.value.isEditorCommon;
     awSimpleReicon.value = appearanceSetting.value.isSimpleReicon;
     awSimpleShowRemark.value = appearanceSetting.value.isSimpleShowRemark;
     awShowFloatingRefreshButton.value = appearanceSetting.value.showFloatingRefreshButton;
     awShowFloatingAddButton.value = appearanceSetting.value.showFloatingAddButton;
+    createItemPositionValue.value = [appearanceSetting.value.createItemPosition || 'bottom'];
     awDisplayPreviewInWebPage.value = appearanceSetting.value.displayPreviewInWebPage;
     invalidShareFakeNode.value = appearanceSetting.value.invalidShareFakeNode;
     awtabBar.value = appearanceSetting.value.istabBar;
     awtabBar2.value = appearanceSetting.value.istabBar2;
+    awtabBar3.value = appearanceSetting.value.istabBar3 ?? false;
+    hidePublicLinkActionButton.value = appearanceSetting.value.hidePublicLinkActionButton ?? false;
     subProgressStyleValue.value = [appearanceSetting.value.subProgressStyle];
-    gistUploadValue.value = [gistUpload.value];
+    editorCommonDisplayModeValue.value = [appearanceSetting.value.editorCommonDisplayMode || 'expanded'];
+    actionButtonsDisplayModeValue.value = [appearanceSetting.value.actionButtonsDisplayMode || 'responsive'];
+    manualSubscriptionsDisplayModeValue.value = [appearanceSetting.value.manualSubscriptionsDisplayMode || 'collapsed'];
+    editorGroupingModeValue.value = [appearanceSetting.value.editorGroupingMode || 'edit-only'];
     // SimpleSwitch.value = isSimpleMode.value;
     // LeftRight.value = isLeftRight.value;
     // awIconColor.value = isIconColor.value;
@@ -593,6 +744,16 @@
       :deep(.nut-cell__value) {
         font-weight: normal;
         color: var(--lowest-text-color);
+      }
+    }
+
+    .label-with-tip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+
+      :deep(.nut-icon-tips) {
+        color: var(--second-text-color);
       }
     }
 

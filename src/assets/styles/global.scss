@@ -32,6 +32,32 @@ img {
   pointer-events: none;
 }
 
+.empty-state-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+
+  h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: var(--primary-text-color);
+  }
+
+  p {
+    font-size: 14px;
+    color: var(--comment-text-color);
+  }
+
+  a {
+    font-size: 14px;
+    margin: 24px 0 12px 0;
+    color: var(--comment-text-color);
+  }
+}
+
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -93,28 +119,29 @@ img {
   border-radius: 8px;
   overflow: auto;
   padding-bottom: 24px;
-  
+
   // PC/平板端响应式最大宽度限制
   @media screen and (min-width: 600px) {
     max-width: 500px;
     width: 500px;
   }
-  
+
   @media screen and (min-width: 768px) {
     max-width: 600px;
     width: 600px;
   }
-  
+
   @media screen and (min-width: 1024px) {
     max-width: 700px;
     width: 700px;
   }
-  
+
   @media screen and (min-width: 1200px) {
     max-width: 800px;
     width: 800px;
   }
 }
+
 .nut-button {
   margin-right: 10px;
 }
@@ -129,6 +156,7 @@ img {
   font-weight: bold;
   line-height: 2;
 }
+
 // .nut-icon-order:before {
 //   content: "\e697";
 // }
@@ -143,26 +171,33 @@ img {
   content: "\e688";
   cursor: pointer;
 }
+
 .nut-icon-tips:before {
   content: "\e671";
   cursor: pointer;
 }
+
 .nut-icon-category:before {
   font-size: 20px;
   content: "\e662";
 }
+
 .nut-icon-issue:before {
   content: '\e6b1';
 }
+
 .nut-icon-ask:before {
   content: '\e670';
 }
+
 .nut-icon-setting:before {
   content: '\e681';
 }
+
 .nut-icon-left:before {
   content: '\e6c9';
 }
+
 .nut-icon-rect-left:before {
   content: '\e6c9';
 }
@@ -171,10 +206,12 @@ img {
   content: '\e6cb';
   color: #666;
 }
+
 .nut-icon-rect-right:before {
   content: '\e6cb'; // \2003 占位符
   // color: var(--lowest-text-color); // 更多设置
 }
+
 .nut-icon-rect-down:before {
   content: "\e6cc";
 }
@@ -186,33 +223,43 @@ img {
 .nut-icon-triangle-up:before {
   content: "\eb6e";
 }
+
 .nut-icon-arrow-right2:before {
   content: '\e6a9';
 }
+
 .nut-icon-arrow-right:before {
   content: '\e6a3';
 }
+
 .nut-icon-link:before {
   content: '\e67c'; // link
 }
+
 .nut-icon-refresh2:before {
   content: '\e682'; // sync
 }
+
 .nut-icon-refresh:before {
   content: '\e690';
 }
+
 .nut-icon-close-little:before {
   content: '\e6aa';
 }
+
 .nut-icon-close:before {
   content: '\e674';
 }
+
 .nut-icon-mask-close:before {
   content: '\e6cd';
 }
+
 .nut-icon-circle-close:before {
   content: '\e699';
 }
+
 .nut-icon-checked:before {
   content: '\e601';
 }
@@ -266,6 +313,7 @@ img {
     height: $icon-height;
     object-fit: contain;
   }
+
   &-loading,
   &-loading1 {
     display: inline-block;
@@ -281,6 +329,7 @@ img {
     animation-iteration-count: infinite;
     animation-direction: alternate;
   }
+
   &-am-jump {
     -webkit-animation-name: nutJumpOne;
     -webkit-animation-duration: var(--animate-duration);
@@ -314,6 +363,7 @@ img {
       animation-direction: normal;
     }
   }
+
   &-am-blink {
     -webkit-animation-name: nutBlink;
     -webkit-animation-duration: var(--animate-duration);
@@ -325,6 +375,7 @@ img {
     animation-timing-function: linear;
     animation-delay: var(--animate-delay);
   }
+
   &-am-breathe {
     -webkit-animation-name: nutBreathe;
     -webkit-animation-duration: var(--animate-duration);
@@ -336,6 +387,7 @@ img {
     animation-timing-function: ease-in-out;
     animation-delay: var(--animate-delay);
   }
+
   &-am-flash {
     -webkit-animation-name: nutFlash;
     -webkit-animation-duration: var(--animate-duration);
@@ -347,6 +399,7 @@ img {
     animation-timing-function: ease-in-out;
     animation-delay: var(--animate-delay);
   }
+
   &-am-bounce {
     -webkit-animation-name: nutBounce;
     -webkit-animation-duration: var(--animate-duration);

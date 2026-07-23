@@ -16,7 +16,7 @@ export function useSettingsApi() {
         data,
       });
     },
-    syncSettings: (query: 'download' | 'upload', options?: { keep?: string[], encode?: 'base64' | 'plaintext' }): AxiosPromise<MyAxiosRes> => {
+    syncSettings: (query: 'download' | 'upload', options?: { keep?: string[], encode?: GistUploadMode }): AxiosPromise<MyAxiosRes> => {
       return request({
         url: `/api/utils/backup`,
         method: 'get',
@@ -25,6 +25,13 @@ export function useSettingsApi() {
           keep: options?.keep?.join(','),
           encode: options?.encode
         }
+      });
+    },
+    downloadBackup: (): AxiosPromise<Blob> => {
+      return request({
+        url: '/api/storage',
+        method: 'get',
+        responseType: 'blob',
       });
     },
     restoreSettings: (data: StoragePostData): AxiosPromise<MyAxiosRes> => {
